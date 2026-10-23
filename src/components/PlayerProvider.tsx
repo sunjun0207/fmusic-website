@@ -213,29 +213,71 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const el = audioRef.current
-    if (!el || !audio?.url || songHeld || silenceAudioRef.current || activeKind !== 'audio') {
-      el?.pause()
+    if (!el) return
+    const blockSong = () => {
+      if (!silenceAudioRef.current) return
+      el.pause()
+      el.muted = true
+      el.volume = 0
+    }
+    el.addEventListener('play', blockSong)
+    el.addEventListener('playing', blockSong)
+    return () => {
+      el.removeEventListener('play', blockSong)
+      el.removeEventListener('playing', blockSong)
+    }
+  }, [audio])
+
+  useEffect(() => {
+    const el = audioRef.current
+    if (!el) return
+    const hold = songHeld || silenceAudioRef.current || activeKind !== 'audio' || !audio?.url
+    if (hold) {
+      if (el.currentTime > 0) audioTimeRef.current = el.currentTime || audioTimeRef.current
+      el.pause()
+      el.muted = true
+      el.volume = 0
+      if (el.getAttribute('src')) {
+        el.removeAttribute('src')
+        el.load()
+      }
       return
     }
+    el.muted = false
+    el.volume = 1
+    if (el.getAttribute('src') !== audio.url) el.src = audio.url
     let cancel = false
     void el.play().then(() => {
-      if (cancel || silenceAudioRef.current || songHeld) el.pause()
+      if (cancel || silenceAudioRef.current) {
+        el.pause()
+        el.muted = true
+        el.volume = 0
+      }
     }).catch(() => undefined)
     return () => {
       cancel = true
+      el.pause()
     }
   }, [audio, activeKind, songHeld])
 
   useEffect(() => {
-    if (!songHeld) return
-    const el = audioRef.current
-    if (!el) return
-    if (el.currentTime > 0) audioTimeRef.current = el.currentTime
-    el.pause()
-    el.muted = true
-    el.removeAttribute('src')
-    el.load()
-  }, [songHeld])
+    if (stage !== 'mv') return
+    const stopSong = () => {
+      const el = audioRef.current
+      if (!el || !silenceAudioRef.current) return
+      el.pause()
+      el.muted = true
+      el.volume = 0
+      if (el.getAttribute('src')) {
+        if (el.currentTime > 0) audioTimeRef.current = el.currentTime
+        el.removeAttribute('src')
+        el.load()
+      }
+    }
+    stopSong()
+    const timer = window.setInterval(stopSong, 300)
+    return () => window.clearInterval(timer)
+  }, [stage])
 
   useEffect(() => {
     if (stage !== 'mv' || !mv?.url) return
@@ -292,6 +334,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (el.currentTime > 0) audioTimeRef.current = el.currentTime
       el.pause()
       el.muted = true
+      el.volume = 0
       el.removeAttribute('src')
       el.load()
     }
@@ -583,8 +626,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         <audio
           ref={audioRef}
           className="media-sink"
-          muted={songHeld}
-          src={songHeld ? undefined : audio.url}
           onPlay={(event) => {
             if (silenceAudioRef.current) {
               event.currentTarget.pause()

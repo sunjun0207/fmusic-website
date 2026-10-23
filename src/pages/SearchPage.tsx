@@ -214,8 +214,14 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
                     <tr
                       key={song.id}
                       className={playing ? 'is-playing is-clickable' : 'is-clickable'}
-                      onClick={() => player.play(song, 'audio', songs)}
-                      onPointerDown={() => player.warm(song, 'audio')}
+                      onClick={(event) => {
+                        if ((event.target as HTMLElement).closest('button, a')) return
+                        player.play(song, 'audio', songs)
+                      }}
+                      onPointerDown={(event) => {
+                        if ((event.target as HTMLElement).closest('button, a')) return
+                        player.warm(song, 'audio')
+                      }}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault()
