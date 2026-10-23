@@ -8,6 +8,8 @@ dist
 .env.*.local
 .env
 
-# 证书不进仓库，运行时由 compose 挂载
-docker/*/ssl
+# 证书不进仓库。fullchain.pem / privkey.pem 放 docker/{dev,test,pro}/ssl/，只提交 .gitkeep
+docker/*/ssl/*.pem
+docker/*/ssl/*.key
+docker/*/ssl/*.crt
 docker/*/certbot-www
