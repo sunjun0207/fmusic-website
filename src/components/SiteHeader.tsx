@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { searchHash, type Route } from '../lib/route'
+import { searchKey } from '../lib/search'
 
 const DISCOVER = new Set<Route['name']>([
   'discover',
@@ -15,13 +16,51 @@ const DISCOVER = new Set<Route['name']>([
 
 export function SiteHeader({ route }: { route: Route }) {
   const [open, setOpen] = useState(false)
-  const [keyword, setKeyword] = useState('')
+  const [keyword, setKeyword] = useState(route.name === 'search' ? route.q : '')
+  const [suggests, setSuggests] = useState<string[]>([])
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  const slotRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const close = () => setOpen(false)
     window.addEventListener('hashchange', close)
     return () => window.removeEventListener('hashchange', close)
   }, [])
+
+  useEffect(() => {
+    setKeyword(route.name === 'search' ? route.q : '')
+    setSuggestOpen(false)
+  }, [route.key])
+
+  useEffect(() => {
+    const q = keyword.trim()
+    if (!suggestOpen || !q) {
+      setSuggests([])
+      return
+    }
+    const timer = window.setTimeout(() => {
+      searchKey(q)
+        .then(setSuggests)
+        .catch(() => setSuggests([]))
+    }, 160)
+    return () => window.clearTimeout(timer)
+  }, [keyword, suggestOpen])
+
+  useEffect(() => {
+    const onPointer = (event: PointerEvent) => {
+      if (!slotRef.current?.contains(event.target as Node)) setSuggestOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointer)
+    return () => document.removeEventListener('pointerdown', onPointer)
+  }, [])
+
+  const go = (value: string) => {
+    const q = value.trim()
+    if (!q) return
+    setKeyword(q)
+    setSuggestOpen(false)
+    window.location.hash = searchHash(q)
+  }
 
   return (
     <header className="site-header">
@@ -41,6 +80,9 @@ export function SiteHeader({ route }: { route: Route }) {
           <a className={DISCOVER.has(route.name) ? 'active' : ''} href="#/discover">
             发现音乐
           </a>
+          <a className={route.name === 'favorites' ? 'active' : ''} href="#/favorites">
+            收藏
+          </a>
           <a className={route.name === 'download' ? 'active' : ''} href="#/download">
             听歌说明
           </a>
@@ -48,24 +90,41 @@ export function SiteHeader({ route }: { route: Route }) {
             关于
           </a>
         </nav>
-        <form
-          className="search-form"
-          role="search"
-          onSubmit={(event) => {
-            event.preventDefault()
-            const q = keyword.trim()
-            if (!q) return
-            window.location.hash = searchHash(q)
-          }}
-        >
-          <input
-            value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            placeholder="搜索歌曲、歌手、歌单"
-            aria-label="搜索"
-          />
-          <button type="submit">搜索</button>
-        </form>
+        <div className="search-slot" ref={slotRef}>
+          <form
+            className="search-form"
+            role="search"
+            onSubmit={(event) => {
+              event.preventDefault()
+              go(keyword)
+            }}
+          >
+            <input
+              value={keyword}
+              onChange={(event) => {
+                setKeyword(event.target.value)
+                setSuggestOpen(true)
+              }}
+              onFocus={() => setSuggestOpen(true)}
+              placeholder="搜索歌曲、歌手、歌单"
+              aria-label="搜索"
+              aria-autocomplete="list"
+              aria-expanded={suggestOpen && suggests.length > 0}
+            />
+            <button type="submit">搜索</button>
+          </form>
+          {suggestOpen && suggests.length ? (
+            <ul className="suggest-list header-suggest" role="listbox">
+              {suggests.map((item) => (
+                <li key={item}>
+                  <button type="button" role="option" onClick={() => go(item)}>
+                    {item}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
         <a className="header-search" href="#/search" aria-label="搜索">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />

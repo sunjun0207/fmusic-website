@@ -33,8 +33,14 @@ export function documentTitle(route: Route) {
       return `下载客户端 - ${base}`
     case 'about':
       return `关于 - ${base}`
+    case 'favorites':
+      return `收藏 - ${base}`
+    case 'favorites':
+      return `收藏 - ${base}`
     case 'search':
       return route.q ? `搜索 ${route.q} - ${base}` : `搜索 - ${base}`
+    case 'favorites':
+      return `收藏 - ${base}`
     default:
       return `未找到页面 - ${base}`
   }

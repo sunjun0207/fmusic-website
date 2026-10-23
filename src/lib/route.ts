@@ -11,6 +11,7 @@ export type RouteName =
   | 'album'
   | 'download'
   | 'about'
+  | 'favorites'
   | 'search'
   | 'notfound'
 
@@ -50,6 +51,7 @@ const KNOWN = new Set<RouteName>([
   'download',
   'about',
   'search',
+  'favorites',
 ])
 
 function decodePart(part: string) {

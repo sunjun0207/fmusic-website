@@ -1,24 +1,56 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { PlayQueue } from './PlayQueue'
 import { LyricView } from './LyricView'
+import {
+  addRecentPlay,
+  clearFavorites,
+  getPlayMode,
+  getRecentPlays,
+  isFavorite,
+  removeFavorite,
+  savePlayMode,
+  toggleFavorite,
+} from '../lib/library'
 import { getLyric, prefetchLyric, type LyricLine } from '../lib/lyric'
+import { nextPlayMode, PLAY_MODE_LABEL, resolveAdvance, type AdvanceDirection, type PlayMode } from '../lib/playback'
 import { mediaFilename, saveMedia } from '../lib/saveMedia'
 import { getMediaUrl, prefetchMedia } from '../lib/play'
-import { coverUrl, findPlayable, type MusicItem } from '../lib/search'
+import { coverUrl, findPlayable, isSongWithoutMv, rememberNoMv, subscribeNoMv, type MusicItem } from '../lib/search'
 
 type Kind = 'audio' | 'mv'
 type Loaded = { song: MusicItem; url: string }
 
 type PlayerApi = {
-  play: (song: MusicItem, kind: Kind) => void
+  play: (song: MusicItem, kind: Kind, queue?: MusicItem[]) => void
   playNamed: (title: string, artist: string, kind: Kind) => void
   warm: (song: MusicItem, kind?: Kind) => void
   warmNamed: (title: string, artist: string, kind?: Kind) => void
+  toggleFavorite: (song: MusicItem) => void
+  removeFavorite: (id: string) => void
+  clearFavorites: () => void
   pending: boolean
   error: string
   playingId: string
+  libraryVersion: number
 }
 
 const PlayerContext = createContext<PlayerApi | null>(null)
+
+function PlayPauseIcon({ paused }: { paused: boolean }) {
+  if (paused) {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M8 5.5v13l11-6.5-11-6.5Z" />
+      </svg>
+    )
+  }
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <rect x="6" y="5" width="4" height="14" rx="1" />
+      <rect x="14" y="5" width="4" height="14" rx="1" />
+    </svg>
+  )
+}
 
 function clock(sec: number) {
   if (!Number.isFinite(sec) || sec < 0) return '0:00'
@@ -81,12 +113,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [lyricStatus, setLyricStatus] = useState<'loading' | 'ready' | 'empty'>('empty')
   const [lyricOpen, setLyricOpen] = useState(false)
   const [queued, setQueued] = useState<MusicItem | null>(null)
+  const [queue, setQueue] = useState<MusicItem[]>([])
+  const [playMode, setPlayMode] = useState<PlayMode>(() => getPlayMode())
+  const [libraryVersion, setLibraryVersion] = useState(0)
+  const [queueOpen, setQueueOpen] = useState(false)
+  const [favOn, setFavOn] = useState(false)
+  const [songHeld, setSongHeld] = useState(false)
+  const [noMvTick, setNoMvTick] = useState(0)
   const audioRef = useRef<HTMLAudioElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const silenceAudioRef = useRef(false)
+  const audioTimeRef = useRef(0)
   const stageRef = useRef<HTMLDivElement>(null)
   const stackRef = useRef<HTMLDivElement>(null)
   const scrubbingRef = useRef(false)
   const requestRef = useRef(0)
+  const queueRef = useRef<MusicItem[]>([])
+  const modeRef = useRef<PlayMode>(playMode)
+  const historyRef = useRef<string[]>([])
+  const audioSongRef = useRef<MusicItem | null>(null)
+  queueRef.current = queue
+  modeRef.current = playMode
+  audioSongRef.current = audio?.song ?? null
 
   const activeKind: Kind = stage === 'mv' || (!audio && mv) ? 'mv' : 'audio'
   const active = activeKind === 'mv' ? mv : audio
@@ -164,23 +212,61 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [audio, mv, queued])
 
   useEffect(() => {
-    if (!audio?.url || activeKind !== 'audio') return
-    void audioRef.current?.play().catch(() => undefined)
-  }, [audio, activeKind])
+    const el = audioRef.current
+    if (!el || !audio?.url || songHeld || silenceAudioRef.current || activeKind !== 'audio') {
+      el?.pause()
+      return
+    }
+    let cancel = false
+    void el.play().then(() => {
+      if (cancel || silenceAudioRef.current || songHeld) el.pause()
+    }).catch(() => undefined)
+    return () => {
+      cancel = true
+    }
+  }, [audio, activeKind, songHeld])
+
+  useEffect(() => {
+    if (!songHeld) return
+    const el = audioRef.current
+    if (!el) return
+    if (el.currentTime > 0) audioTimeRef.current = el.currentTime
+    el.pause()
+    el.muted = true
+    el.removeAttribute('src')
+    el.load()
+  }, [songHeld])
 
   useEffect(() => {
     if (stage !== 'mv' || !mv?.url) return
-    void videoRef.current?.play().catch(() => undefined)
+    silenceAudioRef.current = true
+    setSongHeld(true)
+    const video = videoRef.current
+    let cancel = false
+    void video?.play().then(() => {
+      if (cancel) video.pause()
+    }).catch(() => undefined)
+    return () => {
+      cancel = true
+      video?.pause()
+    }
   }, [stage, mv])
 
   useEffect(() => {
     if (stage !== 'mv') return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !document.fullscreenElement) setStage(null)
+      if (event.key === 'Escape' && !document.fullscreenElement) {
+        videoRef.current?.pause()
+        silenceAudioRef.current = false
+        setSongHeld(false)
+        setStage(null)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [stage])
+
+  useEffect(() => subscribeNoMv(() => setNoMvTick((value) => value + 1)), [])
 
   useEffect(() => {
     const sync = () => setFullscreen(Boolean(document.fullscreenElement))
@@ -199,10 +285,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setDuration((value) => (Math.abs(value - nextDuration) < 0.1 ? value : nextDuration))
   }
 
+  const silenceSong = () => {
+    silenceAudioRef.current = true
+    const el = audioRef.current
+    if (el) {
+      if (el.currentTime > 0) audioTimeRef.current = el.currentTime
+      el.pause()
+      el.muted = true
+      el.removeAttribute('src')
+      el.load()
+    }
+    setSongHeld(true)
+  }
+
+  const releaseSong = () => {
+    silenceAudioRef.current = false
+    setSongHeld(false)
+  }
+
   const open = async (song: MusicItem, kind: Kind, request?: number) => {
     const ticket = request ?? ++requestRef.current
     if (kind === 'audio' && audio?.song.id === song.id && audio.url) {
       const el = audioRef.current
+      releaseSong()
+      videoRef.current?.pause()
       setMv(null)
       setStage(null)
       setQueued(song)
@@ -215,7 +321,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return
     }
     if (kind === 'mv' && mv?.song.id === song.id && mv.url) {
-      audioRef.current?.pause()
+      silenceSong()
       setStage('mv')
       setPlayingId(song.id)
       setPending(false)
@@ -223,11 +329,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (el?.paused) void el.play()
       return
     }
-    if (kind === 'mv' && !song.hasMv) {
+    if (kind === 'mv' && (!song.hasMv || isSongWithoutMv(song.id))) {
+      releaseSong()
       setError('这首歌暂时没有 MV')
       setPending(false)
       return
     }
+    if (kind === 'mv') silenceSong()
+    else videoRef.current?.pause()
     setError('')
     setPending(true)
     setPlayingId(song.id)
@@ -238,36 +347,121 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setLyricOpen(true)
       setMv(null)
       setStage(null)
-      prefetchLyric(song.id)
+      if (song.id) {
+        addRecentPlay(song)
+        setLibraryVersion((value) => value + 1)
+        prefetchLyric(song.id)
+      }
     }
     try {
       const url = await getMediaUrl(song.id, kind)
       if (ticket !== requestRef.current) return
       if (kind === 'audio') {
+        audioTimeRef.current = 0
+        releaseSong()
+        videoRef.current?.pause()
         setMv(null)
         setStage(null)
         setAudio({ song, url })
       } else {
-        audioRef.current?.pause()
+        silenceSong()
         setMv({ song, url })
         setStage('mv')
       }
     } catch (reason: unknown) {
       if (ticket !== requestRef.current) return
-      setError(reason instanceof Error ? reason.message : '播放失败')
+      if (kind === 'mv') releaseSong()
+      const message = reason instanceof Error ? reason.message : '播放失败'
+      if (kind === 'mv' && message.includes('没有')) rememberNoMv(song.id)
+      setError(message)
     } finally {
       if (ticket === requestRef.current) setPending(false)
     }
   }
 
-  const play = (song: MusicItem, kind: Kind) => {
+  const rememberQueue = (song: MusicItem, nextQueue?: MusicItem[], keepHistory = false) => {
+    if (!song.id) return
+    if (nextQueue?.length) {
+      const list = nextQueue.some((item) => item.id === song.id) ? nextQueue : [song, ...nextQueue]
+      queueRef.current = list
+      setQueue(list)
+      historyRef.current = []
+      return
+    }
+    const current = audioSongRef.current
+    if (!keepHistory && modeRef.current === 'shuffle' && current && current.id !== song.id) {
+      historyRef.current = [...historyRef.current, current.id].slice(-50)
+    }
+    if (!queueRef.current.some((item) => item.id === song.id)) {
+      queueRef.current = [song]
+      setQueue([song])
+      historyRef.current = []
+    }
+  }
+
+  const play = (song: MusicItem, kind: Kind, nextQueue?: MusicItem[], keepHistory = false) => {
+    if (kind === 'audio') rememberQueue(song, nextQueue, keepHistory)
     void open(song, kind)
+  }
+
+  const advance = (direction: AdvanceDirection) => {
+    const song = audioSongRef.current
+    if (!song?.id) return
+    if (silenceAudioRef.current && direction !== 'ended') {
+      releaseSong()
+      videoRef.current?.pause()
+      setMv(null)
+      setStage(null)
+    }
+    if (silenceAudioRef.current) return
+    const result = resolveAdvance({
+      list: queueRef.current,
+      currentId: song.id,
+      mode: modeRef.current,
+      direction,
+      history: historyRef.current,
+    })
+    historyRef.current = result.history
+    if (result.replay || !result.item || result.item.id === song.id) {
+      const el = audioRef.current
+      if (!el) return
+      el.currentTime = 0
+      void el.play().catch(() => undefined)
+      return
+    }
+    play(result.item, 'audio', undefined, true)
+  }
+
+  const cycleMode = () => {
+    setPlayMode((mode) => {
+      const next = nextPlayMode(mode)
+      savePlayMode(next)
+      if (next !== 'shuffle') historyRef.current = []
+      return next
+    })
+  }
+
+  const toggleSongFavorite = (song: MusicItem) => {
+    if (!song.id) return
+    toggleFavorite(song)
+    setLibraryVersion((value) => value + 1)
+  }
+
+  const removeSongFavorite = (id: string) => {
+    removeFavorite(id)
+    setLibraryVersion((value) => value + 1)
+  }
+
+  const clearSongFavorites = () => {
+    clearFavorites()
+    setLibraryVersion((value) => value + 1)
   }
 
   const playNamed = (title: string, artist: string, kind: Kind) => {
     const ticket = ++requestRef.current
     setError('')
     setPending(true)
+    if (kind === 'mv') silenceSong()
     if (kind === 'audio') {
       setLyricOpen(true)
       setQueued({ id: '', title, artist, album: '', duration: 0, hasMv: false })
@@ -279,6 +473,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       })
       .catch((reason: unknown) => {
         if (ticket !== requestRef.current) return
+        if (kind === 'mv') releaseSong()
         setError(reason instanceof Error ? reason.message : '播放失败')
         setPending(false)
       })
@@ -345,25 +540,40 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     await node.requestFullscreen()
   }
 
+  useEffect(() => {
+    const songId = dockSong?.id ?? ''
+    setFavOn(Boolean(songId) && isFavorite(songId))
+  }, [dockSong?.id, libraryVersion])
+
   const playRef = useRef(play)
   const playNamedRef = useRef(playNamed)
   const warmRef = useRef(warm)
   const warmNamedRef = useRef(warmNamed)
+  const toggleFavRef = useRef(toggleSongFavorite)
+  const removeFavRef = useRef(removeSongFavorite)
+  const clearFavRef = useRef(clearSongFavorites)
   playRef.current = play
   playNamedRef.current = playNamed
   warmRef.current = warm
   warmNamedRef.current = warmNamed
+  toggleFavRef.current = toggleSongFavorite
+  removeFavRef.current = removeSongFavorite
+  clearFavRef.current = clearSongFavorites
   const value = useMemo<PlayerApi>(
     () => ({
-      play: (song, kind) => playRef.current(song, kind),
+      play: (song, kind, nextQueue) => playRef.current(song, kind, nextQueue),
       playNamed: (title, artist, kind) => playNamedRef.current(title, artist, kind),
       warm: (song, kind = 'audio') => warmRef.current(song, kind),
       warmNamed: (title, artist, kind = 'audio') => warmNamedRef.current(title, artist, kind),
+      toggleFavorite: (song) => toggleFavRef.current(song),
+      removeFavorite: (id) => removeFavRef.current(id),
+      clearFavorites: () => clearFavRef.current(),
       pending,
       error,
       playingId,
+      libraryVersion,
     }),
-    [pending, error, playingId],
+    [pending, error, playingId, libraryVersion],
   )
 
   return (
@@ -373,11 +583,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         <audio
           ref={audioRef}
           className="media-sink"
-          src={audio.url}
-          onPlay={() => bind(audioRef.current)}
-          onPause={() => bind(audioRef.current)}
-          onTimeUpdate={() => activeKind === 'audio' && bind(audioRef.current)}
-          onLoadedMetadata={() => bind(audioRef.current)}
+          muted={songHeld}
+          src={songHeld ? undefined : audio.url}
+          onPlay={(event) => {
+            if (silenceAudioRef.current) {
+              event.currentTarget.pause()
+              return
+            }
+            videoRef.current?.pause()
+            bind(event.currentTarget)
+          }}
+          onPause={() => {
+            if (!silenceAudioRef.current) bind(audioRef.current)
+          }}
+          onTimeUpdate={() => activeKind === 'audio' && !silenceAudioRef.current && bind(audioRef.current)}
+          onLoadedMetadata={(event) => {
+            const el = event.currentTarget
+            const mark = audioTimeRef.current
+            if (mark > 0.3 && el.currentTime < 0.3) el.currentTime = mark
+            audioTimeRef.current = 0
+            if (!silenceAudioRef.current) bind(el)
+          }}
+          onEnded={() => {
+            if (silenceAudioRef.current) return
+            advance('ended')
+          }}
         />
       ) : null}
       {(audio || mv || queued) && (
@@ -396,8 +626,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             </span>
           </div>
           <div className="transport">
-            <button type="button" className="icon-btn" onClick={toggle} aria-label={paused ? '播放' : '暂停'}>
-              {paused ? '播放' : '暂停'}
+            <button type="button" className="text-btn" onClick={() => advance('prev')} aria-label="上一首">
+              上一首
+            </button>
+            <button type="button" className="icon-btn play-toggle" onClick={toggle} aria-label={paused ? '播放' : '暂停'}>
+              <PlayPauseIcon paused={paused} />
+            </button>
+            <button type="button" className="text-btn" onClick={() => advance('next')} aria-label="下一首">
+              下一首
             </button>
             <SeekBar current={current} duration={duration} onScrub={scrub} onScrubEnd={scrubEnd} />
             <span className="time">
@@ -405,6 +641,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             </span>
           </div>
           <div className="player-actions">
+            <button
+              type="button"
+              className="text-btn"
+              onClick={cycleMode}
+              aria-label={`循环模式：${PLAY_MODE_LABEL[playMode]}，点击切换`}
+            >
+              {PLAY_MODE_LABEL[playMode]}
+            </button>
+            <button type="button" className="text-btn" onClick={() => setQueueOpen(true)}>
+              播放列表
+            </button>
+            {dockSong?.id ? (
+              <button
+                type="button"
+                className={favOn ? 'text-btn fav-on' : 'text-btn'}
+                onClick={() => toggleSongFavorite(dockSong)}
+                aria-label={favOn ? '取消收藏' : '收藏'}
+              >
+                {favOn ? '已收藏' : '收藏'}
+              </button>
+            ) : null}
             {active ? (
               <button
                 type="button"
@@ -425,10 +682,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             >
               {activeKind === 'mv' ? '全屏' : '歌词'}
             </button>
-            {audio?.song.hasMv ? (
-              <button type="button" className="text-btn" disabled={pending} onClick={() => play(audio.song, 'mv')}>
-                播放MV
-              </button>
+            {dockSong?.id ? (
+              dockSong.hasMv && noMvTick >= 0 && !isSongWithoutMv(dockSong.id) ? (
+                <button type="button" className="text-btn" disabled={pending} onClick={() => play(dockSong, 'mv')}>
+                  播放MV
+                </button>
+              ) : (
+                <span className="mv-none">暂无MV</span>
+              )
             ) : null}
           </div>
           {error ? <p className="play-error">{error}</p> : null}
@@ -464,6 +725,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         </div>
       ) : null}
 
+      <PlayQueue
+        open={queueOpen}
+        queue={queue}
+        recent={getRecentPlays()}
+        currentId={audio?.song.id ?? ''}
+        onClose={() => setQueueOpen(false)}
+        onPickQueue={(song) => {
+          setQueueOpen(false)
+          play(song, 'audio')
+        }}
+        onPickRecent={(song) => {
+          setQueueOpen(false)
+          play(song, 'audio', getRecentPlays())
+        }}
+      />
       {!audio && !mv && !queued && error ? (
         <div className="player-stack">
           <div className="player-dock">
@@ -500,6 +776,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                   className="btn btn-line"
                   onClick={() => {
                     if (document.fullscreenElement) void document.exitFullscreen()
+                    videoRef.current?.pause()
+                    releaseSong()
                     setStage(null)
                   }}
                 >
@@ -527,8 +805,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               </div>
             )}
             <div className="stage-bar">
-              <button type="button" className="icon-btn icon-btn-light" onClick={toggle}>
-                {paused ? '播放' : '暂停'}
+              <button
+                type="button"
+                className="icon-btn icon-btn-light play-toggle"
+                onClick={toggle}
+                aria-label={paused ? '播放' : '暂停'}
+              >
+                <PlayPauseIcon paused={paused} />
               </button>
               <SeekBar current={current} duration={duration} onScrub={scrub} onScrubEnd={scrubEnd} />
               <span className="time">

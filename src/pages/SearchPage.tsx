@@ -1,9 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { EmptyState } from '../components/EmptyState'
 import { usePlayer } from '../components/PlayerProvider'
 import { hotSearches } from '../data/catalog'
 import { searchHash } from '../lib/route'
-import { coverUrl, formatDuration, peekSearch, searchKey, searchMusic, type MusicItem } from '../lib/search'
+import { getMediaUrl } from '../lib/play'
+import {
+  coverUrl,
+  formatDuration,
+  isSongWithoutMv,
+  peekSearch,
+  rememberNoMv,
+  searchKey,
+  searchMusic,
+  subscribeNoMv,
+  type MusicItem,
+} from '../lib/search'
 
 const PAGE_SIZE = 20
 
@@ -20,13 +31,34 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [suggests, setSuggests] = useState<string[]>([])
+  const [focused, setFocused] = useState(false)
+  const blurTimer = useRef(0)
+  const probedMv = useRef(new Set<string>())
   const player = usePlayer()
+
+  useEffect(
+    () =>
+      subscribeNoMv(() => {
+        setSongs((list) => list.map((item) => (isSongWithoutMv(item.id) ? { ...item, hasMv: false } : item)))
+      }),
+    [],
+  )
+
+  useEffect(() => {
+    for (const song of songs) {
+      if (!song.hasMv || probedMv.current.has(song.id)) continue
+      probedMv.current.add(song.id)
+      void getMediaUrl(song.id, 'mv').catch((reason: unknown) => {
+        if (reason instanceof Error && reason.message.includes('没有')) rememberNoMv(song.id)
+      })
+    }
+  }, [songs])
 
   useEffect(() => setInput(q), [q])
 
   useEffect(() => {
     const keyword = input.trim()
-    if (!keyword || keyword === q.trim()) {
+    if (!focused || !keyword) {
       setSuggests([])
       return
     }
@@ -36,7 +68,7 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
         .catch(() => setSuggests([]))
     }, 160)
     return () => window.clearTimeout(timer)
-  }, [input, q])
+  }, [input, focused])
 
   useEffect(() => {
     const keyword = q.trim()
@@ -108,9 +140,17 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
             <input
               value={input}
               onChange={(event) => setInput(event.target.value)}
+              onFocus={() => {
+                window.clearTimeout(blurTimer.current)
+                setFocused(true)
+              }}
+              onBlur={() => {
+                blurTimer.current = window.setTimeout(() => setFocused(false), 120)
+              }}
               placeholder="歌曲、歌手或专辑"
               aria-label="搜索关键词"
               aria-autocomplete="list"
+              aria-expanded={focused && suggests.length > 0}
             />
             {suggests.length ? (
               <ul className="suggest-list">
@@ -174,12 +214,12 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
                     <tr
                       key={song.id}
                       className={playing ? 'is-playing is-clickable' : 'is-clickable'}
-                      onClick={() => player.play(song, 'audio')}
+                      onClick={() => player.play(song, 'audio', songs)}
                       onPointerDown={() => player.warm(song, 'audio')}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault()
-                          player.play(song, 'audio')
+                          player.play(song, 'audio', songs)
                         }
                       }}
                       tabIndex={0}
@@ -210,23 +250,30 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
                             onPointerDown={() => player.warm(song, 'audio')}
                             onClick={(event) => {
                               event.stopPropagation()
-                              player.play(song, 'audio')
+                              player.play(song, 'audio', songs)
                             }}
                           >
                             播放歌曲
                           </button>
-                          <button
-                            type="button"
-                            className="text-btn"
-                            disabled={player.pending}
-                            onPointerDown={() => player.warm(song, 'mv')}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              player.play(song, 'mv')
-                            }}
-                          >
-                            播放MV
-                          </button>
+                          {song.hasMv ? (
+                            <button
+                              type="button"
+                              className="text-btn"
+                              disabled={player.pending}
+                              onPointerDown={(event) => {
+                                event.stopPropagation()
+                                player.warm(song, 'mv')
+                              }}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                player.play(song, 'mv')
+                              }}
+                            >
+                              播放MV
+                            </button>
+                          ) : (
+                            <span className="mv-none">暂无MV</span>
+                          )}
                         </div>
                       </td>
                     </tr>

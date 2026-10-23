@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlbumCard } from '../components/AlbumCard'
 import { CoverArt } from '../components/CoverArt'
 import { PlaylistGrid } from '../components/PlaylistGrid'
 import { usePlayer } from '../components/PlayerProvider'
 import { SectionHead } from '../components/SectionHead'
 import { albums, banners, charts, EDITORIAL_NOTE, getTracks, playlists } from '../data/catalog'
+import { getRecentPlays } from '../lib/library'
+import { coverUrl } from '../lib/search'
 
 function Banner() {
   const [index, setIndex] = useState(0)
@@ -103,7 +105,8 @@ function AlbumScroller() {
 }
 
 export function DiscoverPage() {
-  const { playNamed, warmNamed, pending } = usePlayer()
+  const { playNamed, warmNamed, pending, play, libraryVersion, playingId } = usePlayer()
+  const recent = useMemo(() => getRecentPlays(), [libraryVersion])
   return (
     <>
       <h1 className="sr-only">发现音乐</h1>
@@ -118,6 +121,33 @@ export function DiscoverPage() {
           </a>
         </aside>
       </div>
+
+      <section>
+        <SectionHead title="最近播放" more="#/favorites" moreLabel="收藏" />
+        {recent.length === 0 ? (
+          <p className="note">还没有听过的歌。先搜索一首，听过的会留在这里。</p>
+        ) : (
+          <div className="recent-list">
+            {recent.map((song) => {
+              const cover = coverUrl(song.image)
+              return (
+                <button
+                  key={song.id}
+                  type="button"
+                  className={playingId === song.id ? 'recent-item is-on' : 'recent-item'}
+                  onClick={() => play(song, 'audio', recent)}
+                >
+                  {cover ? <img src={cover} alt="" /> : <span />}
+                  <span>
+                    <strong>{song.title}</strong>
+                    <em>{song.artist}</em>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </section>
 
       <section>
         <SectionHead title="热门推荐" more="#/playlists" />

@@ -12,6 +12,7 @@ import { ArtistDetailPage } from './pages/ArtistDetailPage'
 import { ArtistsPage } from './pages/ArtistsPage'
 import { DiscoverPage } from './pages/DiscoverPage'
 import { DownloadPage } from './pages/DownloadPage'
+import { FavoritesPage } from './pages/FavoritesPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PlaylistDetailPage } from './pages/PlaylistDetailPage'
 import { PlaylistsPage } from './pages/PlaylistsPage'
@@ -47,6 +48,7 @@ export default function App() {
         {route.name === 'download' && <DownloadPage />}
         {route.name === 'about' && <AboutPage />}
         {route.name === 'search' && <SearchPage q={route.q} page={route.page} />}
+        {route.name === 'favorites' && <FavoritesPage />}
         {route.name === 'notfound' && <NotFoundPage />}
       </main>
       <SiteFooter />

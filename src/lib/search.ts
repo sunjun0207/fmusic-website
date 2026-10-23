@@ -53,7 +53,9 @@ function mvPicture(raw: Record<string, unknown>) {
 
 function songHasMv(raw: Record<string, unknown>) {
   if (String(pick(raw, 'MVFLAG') ?? '') === '1') return true
-  return String(pick(raw, 'MKVRID') ?? '').startsWith('MV_')
+  const rid = String(pick(raw, 'MKVRID') ?? '')
+  const match = /^MV_(\d+)$/.exec(rid)
+  return Boolean(match && Number(match[1]) > 0)
 }
 
 function mapSearchItem(raw: Record<string, unknown>): MusicItem | null {
@@ -106,6 +108,32 @@ export function formatDuration(sec: number) {
 }
 
 const searchCache = new Map<string, SearchPageResult>()
+const noMvIds = new Set<string>()
+const noMvListeners = new Set<() => void>()
+
+export function isSongWithoutMv(id: string) {
+  return noMvIds.has(id)
+}
+
+export function rememberNoMv(id: string) {
+  if (!id || noMvIds.has(id)) return
+  noMvIds.add(id)
+  for (const page of searchCache.values()) {
+    page.list = page.list.map((item) => (item.id === id ? { ...item, hasMv: false } : item))
+  }
+  noMvListeners.forEach((listener) => listener())
+}
+
+export function subscribeNoMv(listener: () => void) {
+  noMvListeners.add(listener)
+  return () => {
+    noMvListeners.delete(listener)
+  }
+}
+
+function withoutKnownMv(item: MusicItem): MusicItem {
+  return noMvIds.has(item.id) ? { ...item, hasMv: false } : item
+}
 
 export function peekSearch(keyword: string, pn = 0, rn = 20) {
   return searchCache.get(`${keyword}\n${pn}\n${rn}`)
@@ -138,7 +166,10 @@ export async function searchMusic(keyword: string, pn = 0, rn = 20): Promise<Sea
   const list = (pick(data, 'abslist', 'list') as Record<string, unknown>[] | undefined) ?? []
   const total = Number(pick(data, 'TOTAL', 'total', 'HIT', 'hit') ?? list.length) || 0
   const result = {
-    list: list.map(mapSearchItem).filter((item): item is MusicItem => !!item),
+    list: list
+      .map(mapSearchItem)
+      .filter((item): item is MusicItem => !!item)
+      .map(withoutKnownMv),
     total,
     pn,
     rn,
