@@ -1,21 +1,26 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import { PlayQueue } from './PlayQueue'
 import { LyricView } from './LyricView'
 import {
   addRecentPlay,
   clearFavorites,
+  getMvQuality,
   getPlayMode,
+  getPosterQuality,
   getRecentPlays,
   isFavorite,
   removeFavorite,
+  saveMvQuality,
   savePlayMode,
+  savePosterQuality,
   toggleFavorite,
+  type PictureQuality,
 } from '../lib/library'
 import { getLyric, prefetchLyric, type LyricLine } from '../lib/lyric'
 import { nextPlayMode, PLAY_MODE_LABEL, resolveAdvance, type AdvanceDirection, type PlayMode } from '../lib/playback'
 import { mediaFilename, saveMedia } from '../lib/saveMedia'
 import { getMediaUrl, prefetchMedia } from '../lib/play'
-import { coverUrl, findPlayable, isSongWithoutMv, rememberNoMv, songPosters, subscribeNoMv, type MusicItem } from '../lib/search'
+import { coverUrl, findPlayable, isSongWithoutMv, POSTER_SIZE, rememberNoMv, songPosters, subscribeNoMv, type MusicItem } from '../lib/search'
 
 type Kind = 'audio' | 'mv'
 type Loaded = { song: MusicItem; url: string }
@@ -36,6 +41,68 @@ type PlayerApi = {
 
 const PlayerContext = createContext<PlayerApi | null>(null)
 
+function StageIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  )
+}
+
+function DownloadIcon() {
+  return (
+    <StageIcon>
+      <path d="M12 4v11" />
+      <path d="M8 11l4 4 4-4" />
+      <path d="M5 20h14" />
+    </StageIcon>
+  )
+}
+
+function QualityIcon() {
+  return (
+    <StageIcon>
+      <path d="M4 7h16" />
+      <path d="M4 12h16" />
+      <path d="M4 17h16" />
+      <circle cx="8" cy="7" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="11" cy="17" r="1.6" fill="currentColor" stroke="none" />
+    </StageIcon>
+  )
+}
+
+function FullscreenIcon() {
+  return (
+    <StageIcon>
+      <path d="M8 4H4v4" />
+      <path d="M16 4h4v4" />
+      <path d="M20 16v4h-4" />
+      <path d="M4 16v4h4" />
+    </StageIcon>
+  )
+}
+
+function ExitFullscreenIcon() {
+  return (
+    <StageIcon>
+      <path d="M4 9h5V4" />
+      <path d="M20 9h-5V4" />
+      <path d="M20 15h-5v5" />
+      <path d="M4 15h5v5" />
+    </StageIcon>
+  )
+}
+
+function CloseIcon() {
+  return (
+    <StageIcon>
+      <path d="M7 7l10 10" />
+      <path d="M17 7L7 17" />
+    </StageIcon>
+  )
+}
+
 function PlayPauseIcon({ paused }: { paused: boolean }) {
   if (paused) {
     return (
@@ -49,6 +116,41 @@ function PlayPauseIcon({ paused }: { paused: boolean }) {
       <rect x="6" y="5" width="4" height="14" rx="1" />
       <rect x="14" y="5" width="4" height="14" rx="1" />
     </svg>
+  )
+}
+
+const QUALITY_OPTIONS: { id: PictureQuality; label: string }[] = [
+  { id: 'sd', label: '标清' },
+  { id: 'hd', label: '高清' },
+  { id: 'fhd', label: '超清' },
+]
+
+function QualitySwitch({
+  label,
+  value,
+  onChange,
+  toolbar = false,
+}: {
+  label: string
+  value: PictureQuality
+  onChange: (value: PictureQuality) => void
+  toolbar?: boolean
+}) {
+  return (
+    <label className={toolbar ? 'stage-tool quality-switch' : 'quality-switch'}>
+      {toolbar ? <QualityIcon /> : <span>{label}</span>}
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value as PictureQuality)}
+      >
+        {QUALITY_OPTIONS.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }
 
@@ -114,7 +216,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [lyricStatus, setLyricStatus] = useState<'loading' | 'ready' | 'empty'>('empty')
   const [lyricOpen, setLyricOpen] = useState(false)
   const [posterIndex, setPosterIndex] = useState(0)
+  const [posterHold, setPosterHold] = useState(0)
+  const [posterDragging, setPosterDragging] = useState(false)
+  const [dragX, setDragX] = useState(0)
   const [brokenPosters, setBrokenPosters] = useState<string[]>([])
+  const [posterQuality, setPosterQuality] = useState<PictureQuality>(getPosterQuality)
+  const [mvQuality, setMvQuality] = useState<PictureQuality>(getMvQuality)
   const [queued, setQueued] = useState<MusicItem | null>(null)
   const [queue, setQueue] = useState<MusicItem[]>([])
   const [playMode, setPlayMode] = useState<PlayMode>(() => getPlayMode())
@@ -136,6 +243,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const historyRef = useRef<string[]>([])
   const audioSongRef = useRef<MusicItem | null>(null)
   const showLyricRef = useRef(true)
+  const mvQualityRef = useRef(mvQuality)
+  const videoTimeRef = useRef(0)
+  const posterDragRef = useRef<{ x: number; dx: number } | null>(null)
+  mvQualityRef.current = mvQuality
   queueRef.current = queue
   modeRef.current = playMode
   audioSongRef.current = audio?.song ?? null
@@ -175,13 +286,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const hidePoster = (url: string) => {
     setBrokenPosters((list) => (list.includes(url) ? list : [...list, url]))
   }
+  const posterSize = POSTER_SIZE[posterQuality]
   const dockPosters = useMemo(
-    () => songPosters(dockSong).filter((url) => !brokenPosters.includes(url)),
-    [dockSong, brokenPosters],
+    () => songPosters(dockSong, posterSize).filter((url) => !brokenPosters.includes(url)),
+    [dockSong, brokenPosters, posterSize],
   )
   const posters = useMemo(
-    () => songPosters(lyricSong).filter((url) => !brokenPosters.includes(url)),
-    [lyricSong, brokenPosters],
+    () => songPosters(lyricSong, posterSize).filter((url) => !brokenPosters.includes(url)),
+    [lyricSong, brokenPosters, posterSize],
   )
   const posterToken = `${dockSong?.id ?? ''}|${lyricSong?.id ?? ''}|${dockPosters.join('|')}|${posters.join('|')}`
   const posterCount = Math.max(dockPosters.length, posters.length)
@@ -191,6 +303,36 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const setLyricVisible = (open: boolean) => {
     showLyricRef.current = open
     setLyricOpen(open)
+  }
+
+  const slidePoster = (dir: number) => {
+    if (posterCount < 2) return
+    setPosterIndex((value) => (value + dir + posterCount) % posterCount)
+    setPosterHold((value) => value + 1)
+    setDragX(0)
+  }
+
+  const onPosterDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (posterCount < 2 || event.button !== 0) return
+    posterDragRef.current = { x: event.clientX, dx: 0 }
+    setPosterDragging(true)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const onPosterMove = (event: PointerEvent<HTMLDivElement>) => {
+    const drag = posterDragRef.current
+    if (!drag) return
+    drag.dx = event.clientX - drag.x
+    setDragX(drag.dx)
+  }
+
+  const onPosterUp = () => {
+    const dx = posterDragRef.current?.dx ?? 0
+    posterDragRef.current = null
+    setPosterDragging(false)
+    if (dx <= -48) slidePoster(1)
+    else if (dx >= 48) slidePoster(-1)
+    else setDragX(0)
   }
 
   useEffect(() => {
@@ -203,7 +345,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setPosterIndex((value) => (value + 1) % posterCount)
     }, 6000)
     return () => window.clearInterval(timer)
-  }, [paused, posterToken, posterCount])
+  }, [paused, posterToken, posterCount, posterHold])
 
   useEffect(() => {
     if (!lyricId) {
@@ -399,7 +541,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setPlayingId(song.id)
       setPending(false)
       if (!el) return
-      if (el.paused) void el.play()
+      if (el.paused) void el.play().catch(() => undefined)
       else el.pause()
       return
     }
@@ -409,7 +551,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setPlayingId(song.id)
       setPending(false)
       const el = videoRef.current
-      if (el?.paused) void el.play()
+      if (el?.paused) void el.play().catch(() => undefined)
       return
     }
     if (kind === 'mv' && (!song.hasMv || isSongWithoutMv(song.id))) {
@@ -437,7 +579,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     }
     try {
-      const url = await getMediaUrl(song.id, kind)
+      const url = await getMediaUrl(song.id, kind, mvQualityRef.current)
       if (ticket !== requestRef.current) return
       if (kind === 'audio') {
         audioTimeRef.current = 0
@@ -564,8 +706,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const warm = (song: MusicItem, kind: Kind) => {
     if (!song.id) return
-    prefetchMedia(song.id, kind)
+    prefetchMedia(song.id, kind, mvQualityRef.current)
     if (kind === 'audio') prefetchLyric(song.id)
+  }
+
+  const choosePosterQuality = (quality: PictureQuality) => {
+    savePosterQuality(quality)
+    setPosterQuality(quality)
+  }
+
+  const chooseMvQuality = (quality: PictureQuality) => {
+    saveMvQuality(quality)
+    mvQualityRef.current = quality
+    setMvQuality(quality)
+    const playing = mv
+    if (!playing?.song.id) return
+    videoTimeRef.current = videoRef.current?.currentTime ?? 0
+    setPending(true)
+    getMediaUrl(playing.song.id, 'mv', quality)
+      .then((url) => {
+        setMv({ song: playing.song, url })
+      })
+      .catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : 'MV 地址获取失败')
+      })
+      .finally(() => setPending(false))
   }
 
   const warmNamed = (title: string, artist: string, kind: Kind) => {
@@ -577,7 +742,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const toggle = () => {
     const el = mediaRef.current
     if (!el) return
-    if (el.paused) void el.play()
+    if (el.paused) void el.play().catch(() => undefined)
     else el.pause()
   }
 
@@ -588,7 +753,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const next = Math.max(0, Math.min(value, limit))
     el.currentTime = next
     setCurrent(next)
-    if (resume && el.paused) void el.play()
+    if (resume && el.paused) void el.play().catch(() => undefined)
   }
 
   const scrub = (value: number) => {
@@ -813,20 +978,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           </header>
           <div className="lyric-body">
             <div className={`lyric-disc${paused ? '' : ' is-on'}`}>
-              <div className="lyric-disc-ring">
-                {posters.length ? (
-                  posters.map((url, index) => (
-                    <img
-                      key={url}
-                      src={url}
-                      alt=""
-                      className={index === posterAt ? 'is-on' : ''}
-                      onError={() => hidePoster(url)}
-                    />
-                  ))
-                ) : (
-                  <span />
-                )}
+              <div className="lyric-poster">
+                <div className="lyric-disc-ring" />
+                <div
+                  className="poster-window"
+                  onPointerDown={onPosterDown}
+                  onPointerMove={onPosterMove}
+                  onPointerUp={onPosterUp}
+                  onPointerCancel={onPosterUp}
+                >
+                  {posters.length ? (
+                    <div
+                      className={posterDragging ? 'poster-track is-drag' : 'poster-track'}
+                      style={{ transform: `translateX(calc(${-posterAt * 100}% + ${dragX}px))` }}
+                    >
+                      {posters.map((url) => (
+                        <img key={url} src={url} alt="" draggable={false} onError={() => hidePoster(url)} />
+                      ))}
+                    </div>
+                  ) : (
+                    <span />
+                  )}
+                </div>
               </div>
               {posters.length > 1 ? (
                 <div className="poster-dots" role="tablist" aria-label="海报">
@@ -837,11 +1010,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                       className={index === posterAt ? 'is-on' : ''}
                       aria-label={`第 ${index + 1} 张海报`}
                       aria-selected={index === posterAt}
-                      onClick={() => setPosterIndex(index)}
+                      onClick={() => {
+                        setPosterIndex(index)
+                        setPosterHold((value) => value + 1)
+                      }}
                     />
                   ))}
                 </div>
               ) : null}
+              <QualitySwitch label="清晰度" value={posterQuality} onChange={choosePosterQuality} />
             </div>
             <LyricView lines={lyrics} status={lyricStatus} current={current} onSeek={(time) => seek(time, true)} />
           </div>
@@ -885,21 +1062,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                   {stage === 'mv' ? ' · MV' : ' · 歌曲'}
                 </span>
               </div>
-              <div className="player-actions">
+              <div className="stage-tools">
                 <button
                   type="button"
-                  className="btn btn-line"
+                  className="stage-tool"
                   disabled={downloading}
+                  aria-label={downloading ? '下载中' : '下载'}
                   onClick={() => void download(active, stage)}
                 >
-                  {downloading ? '下载中…' : '下载'}
+                  <DownloadIcon />
+                  <span className="stage-tool-label">{downloading ? '下载中' : '下载'}</span>
                 </button>
-                <button type="button" className="btn btn-line" onClick={() => void enterFullscreen()}>
-                  {fullscreen ? '退出全屏' : '全屏'}
+                {stage === 'mv' ? (
+                  <QualitySwitch toolbar label="清晰度" value={mvQuality} onChange={chooseMvQuality} />
+                ) : null}
+                <button
+                  type="button"
+                  className="stage-tool"
+                  aria-label={fullscreen ? '退出全屏' : '全屏'}
+                  onClick={() => void enterFullscreen()}
+                >
+                  {fullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
+                  <span className="stage-tool-label">{fullscreen ? '退出全屏' : '全屏'}</span>
                 </button>
                 <button
                   type="button"
-                  className="btn btn-line"
+                  className="stage-tool stage-tool-close"
+                  aria-label="关闭"
                   onClick={() => {
                     if (document.fullscreenElement) void document.exitFullscreen()
                     videoRef.current?.pause()
@@ -907,7 +1096,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                     setStage(null)
                   }}
                 >
-                  关闭
+                  <CloseIcon />
                 </button>
               </div>
             </header>
@@ -921,7 +1110,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                 onPlay={() => bind(videoRef.current)}
                 onPause={() => bind(videoRef.current)}
                 onTimeUpdate={() => bind(videoRef.current)}
-                onLoadedMetadata={() => bind(videoRef.current)}
+                onLoadedMetadata={(event) => {
+                  const mark = videoTimeRef.current
+                  if (mark > 0.3) event.currentTarget.currentTime = mark
+                  videoTimeRef.current = 0
+                  bind(event.currentTarget)
+                  if (mark > 0.3) void event.currentTarget.play().catch(() => undefined)
+                }}
               />
             ) : (
               <div className="audio-stage">

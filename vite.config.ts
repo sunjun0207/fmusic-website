@@ -3,11 +3,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from 'vite'
 import react from '@vitejs/plugin-react'
 
-const KUWO_AUDIO_HOST = /^kw-[a-z0-9-]+\.kuwo\.cn$/i
+const KUWO_AUDIO_HOST = /^(?:kw-[a-z0-9-]+|mp4dl\.cdn)\.kuwo\.cn$/i
 
 function kuwoAudioProxy(req: IncomingMessage, res: ServerResponse, next: () => void) {
   const raw = req.url || ''
-  const matched = raw.match(/^\/proxy\/kw-audio\/(kw-[a-z0-9-]+\.kuwo\.cn)(\/.*)$/i)
+  const matched = raw.match(/^\/proxy\/kw-audio\/((?:kw-[a-z0-9-]+|mp4dl\.cdn)\.kuwo\.cn)(\/.*)$/i)
   if (!matched || !KUWO_AUDIO_HOST.test(matched[1])) {
     next()
     return

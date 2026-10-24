@@ -6,7 +6,18 @@ const KEYS = {
   recentPlays: 'fmusic_website_recent_plays',
   favorites: 'fmusic_website_favorites',
   playMode: 'fmusic_website_play_mode',
+  posterQuality: 'fmusic_website_poster_quality',
+  mvQuality: 'fmusic_website_mv_quality',
 } as const
+
+export type PictureQuality = 'sd' | 'hd' | 'fhd'
+
+const PICTURE_QUALITIES: PictureQuality[] = ['sd', 'hd', 'fhd']
+
+function readQuality(key: string): PictureQuality {
+  const raw = localStorage.getItem(key)
+  return PICTURE_QUALITIES.includes(raw as PictureQuality) ? (raw as PictureQuality) : 'fhd'
+}
 
 const PLAY_MODES: PlayMode[] = ['list', 'single', 'shuffle']
 
@@ -84,4 +95,20 @@ export function getPlayMode(): PlayMode {
 
 export function savePlayMode(mode: PlayMode) {
   localStorage.setItem(KEYS.playMode, mode)
+}
+
+export function getPosterQuality() {
+  return readQuality(KEYS.posterQuality)
+}
+
+export function savePosterQuality(quality: PictureQuality) {
+  localStorage.setItem(KEYS.posterQuality, quality)
+}
+
+export function getMvQuality() {
+  return readQuality(KEYS.mvQuality)
+}
+
+export function saveMvQuality(quality: PictureQuality) {
+  localStorage.setItem(KEYS.mvQuality, quality)
 }

@@ -103,11 +103,17 @@ function collectImages(album: string, artist: string, mv: string) {
   return [...new Set([coverUrl(album), coverUrl(artist, 'artist'), coverUrl(mv)].filter(Boolean))]
 }
 
-export function songPosters(song?: Pick<MusicItem, 'image' | 'images'> | null) {
+export const POSTER_SIZE = { sd: 300, hd: 500, fhd: 700 } as const
+
+export function withCoverSize(url: string, size: number) {
+  if (!url) return ''
+  return url.replace(/\/(120|300|500|700|800)(?=\/)/g, `/${size}`)
+}
+
+export function songPosters(song?: Pick<MusicItem, 'image' | 'images'> | null, size: number = POSTER_SIZE.fhd) {
   const ready = (song?.images ?? []).filter(Boolean)
-  if (ready.length) return [...new Set(ready)]
-  const single = coverUrl(song?.image)
-  return single ? [single] : []
+  const list = ready.length ? ready : [coverUrl(song?.image)].filter(Boolean)
+  return [...new Set(list.map((url) => withCoverSize(url, size)))]
 }
 
 export function formatDuration(sec: number) {
