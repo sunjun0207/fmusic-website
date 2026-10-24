@@ -1,5 +1,31 @@
-import { useEffect, useRef, useState } from 'react'
-import { fetchComments, type SongComment } from '../lib/comment'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { appendComments, fetchComments, threadComments, type SongComment } from '../lib/comment'
+
+function LikeIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M12 20s-7-4.4-7-9a4 4 0 0 1 7-2 4 4 0 0 1 7 2c0 4.6-7 9-7 9z" />
+    </svg>
+  )
+}
+
+function ReplyIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M6 7h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H11l-3.5 3v-3H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z" />
+    </svg>
+  )
+}
+
+function Marks({ medal, medalLevel, rank }: { medal: string; medalLevel: number; rank: number }) {
+  if (!medal && rank <= 0) return null
+  return (
+    <>
+      {medal ? <span className="comment-badge">{medalLevel > 0 ? `${medal} ${medalLevel}` : medal}</span> : null}
+      {rank > 0 ? <span className="comment-badge">等级 {rank}</span> : null}
+    </>
+  )
+}
 
 function Avatar({ item }: { item: SongComment }) {
   const [broken, setBroken] = useState(false)
@@ -7,27 +33,64 @@ function Avatar({ item }: { item: SongComment }) {
   return <img src={item.avatar} alt="" onError={() => setBroken(true)} />
 }
 
+function CommentNode({ item }: { item: SongComment }) {
+  return (
+    <li className="comment-item">
+      <Avatar item={item} />
+      <div>
+        <div className="comment-user">
+          <strong>{item.user}</strong>
+          <Marks medal={item.medal} medalLevel={item.medalLevel} rank={item.rank} />
+        </div>
+        {item.time ? <time>{item.time}</time> : null}
+        <p>{item.text}</p>
+        <div className="comment-actions">
+          <span className="comment-stat" aria-label={`${item.likes} 赞`}>
+            <LikeIcon />
+            <em>{item.likes}</em>
+          </span>
+          <span className="comment-stat" aria-label={`${item.replies.length} 条评论`}>
+            <ReplyIcon />
+            <em>{item.replies.length}</em>
+          </span>
+        </div>
+        {item.replies.length ? (
+          <ul className="comment-children">
+            {item.replies.map((reply) => (
+              <CommentNode key={reply.id} item={reply} />
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    </li>
+  )
+}
+
 export function CommentPanel({ songId }: { songId: string }) {
-  const [list, setList] = useState<SongComment[]>([])
+  const [flat, setFlat] = useState<SongComment[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [seen, setSeen] = useState(0)
   const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading')
   const [more, setMore] = useState(false)
   const songRef = useRef(songId)
   songRef.current = songId
+  const list = useMemo(() => threadComments(flat), [flat])
 
   useEffect(() => {
     let cancel = false
-    setList([])
+    setFlat([])
     setTotal(0)
     setPage(1)
+    setSeen(0)
     setMore(false)
     setStatus('loading')
     fetchComments(songId, 1)
       .then((result) => {
         if (cancel) return
-        setList(result.list)
+        setFlat(result.list)
         setTotal(result.total)
+        setSeen(result.size)
         setStatus(result.list.length ? 'ready' : 'empty')
       })
       .catch(() => {
@@ -45,11 +108,9 @@ export function CommentPanel({ songId }: { songId: string }) {
     fetchComments(songId, next)
       .then((result) => {
         if (songRef.current !== owner) return
-        setList((current) => {
-          const seen = new Set(current.map((item) => item.id))
-          return [...current, ...result.list.filter((item) => !seen.has(item.id))]
-        })
+        setFlat((current) => appendComments(current, result.list))
         setTotal(result.total)
+        setSeen((value) => value + result.size)
         setPage(next)
       })
       .catch(() => undefined)
@@ -70,19 +131,11 @@ export function CommentPanel({ songId }: { songId: string }) {
       {status === 'ready' ? (
         <ul className="comment-list">
           {list.map((item) => (
-            <li key={item.id} className="comment-item">
-              <Avatar item={item} />
-              <div>
-                <strong>{item.user}</strong>
-                {item.time ? <time>{item.time}</time> : null}
-                <p>{item.text}</p>
-                {item.likes > 0 ? <em>{item.likes} 赞</em> : null}
-              </div>
-            </li>
+            <CommentNode key={item.id} item={item} />
           ))}
         </ul>
       ) : null}
-      {status === 'ready' && list.length < total ? (
+      {status === 'ready' && seen < total ? (
         <button type="button" className="comment-more" disabled={more} onClick={loadMore}>
           {more ? '加载中…' : '更多评论'}
         </button>

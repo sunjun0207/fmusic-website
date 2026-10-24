@@ -3,7 +3,7 @@ import type { SongComment } from '../lib/comment'
 
 type Flying = { key: string; text: string; lane: number; speed: number; delay: number; gradient: string }
 
-const LANES = 3
+const LANES = 2
 const GRADIENTS = [
   'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.95) 14%, rgba(176,255,238,0.92) 50%, rgba(255,255,255,0.9) 86%, rgba(255,255,255,0) 100%)',
   'linear-gradient(90deg, rgba(255,232,186,0) 0%, rgba(255,246,220,0.95) 16%, rgba(255,255,255,0.9) 54%, rgba(255,210,140,0.88) 84%, rgba(255,232,186,0) 100%)',
@@ -19,11 +19,13 @@ export function DanmakuLayer({
   items,
   duration,
   paused,
+  insetTop = 0,
 }: {
   items: SongComment[]
   current: number
   duration: number
   paused: boolean
+  insetTop?: number
 }) {
   const [flying, setFlying] = useState<Flying[]>([])
   const cursor = useRef(0)
@@ -75,13 +77,13 @@ export function DanmakuLayer({
 
   if (!flying.length) return null
   return (
-    <div className={`danmaku-layer${paused ? ' is-paused' : ''}`} aria-hidden="true">
+    <div className={`danmaku-layer${paused ? ' is-paused' : ''}`} style={{ top: insetTop }} aria-hidden="true">
       {flying.map((item) => (
         <span
           key={item.key}
           className="danmaku-item"
           style={{
-            top: 4 + item.lane * 30,
+            top: 2 + item.lane * 26,
             backgroundImage: item.gradient,
             animationDuration: `${item.speed}s`,
             animationDelay: item.delay ? `${item.delay}s` : undefined,

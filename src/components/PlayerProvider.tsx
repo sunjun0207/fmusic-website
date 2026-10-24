@@ -3,7 +3,7 @@ import { PlayQueue } from './PlayQueue'
 import { CommentPanel } from './CommentPanel'
 import { DanmakuLayer } from './DanmakuLayer'
 import { LyricView } from './LyricView'
-import { fetchDanmaku, type SongComment } from '../lib/comment'
+import { fetchComments, fetchDanmaku, formatCommentCount, type SongComment } from '../lib/comment'
 import {
   addRecentPlay,
   clearFavorites,
@@ -58,6 +58,13 @@ function StageIcon({ children }: { children: ReactNode }) {
   )
 }
 
+function CommentIcon() {
+  return (
+    <StageIcon>
+      <path d="M6 7h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H11l-3.5 3v-3H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z" />
+    </StageIcon>
+  )
+}
 function DownloadIcon() {
   return (
     <StageIcon>
@@ -163,13 +170,20 @@ function QualitySwitch({
       <select
         aria-label={label}
         value={value}
-        onChange={(event) => onChange(event.target.value as PictureQuality)}
+        onChange={(event) => {
+          const next = event.target.value as PictureQuality
+          if (disabledValues.includes(next)) return
+          onChange(next)
+        }}
       >
-        {QUALITY_OPTIONS.map((item) => (
-          <option key={item.id} value={item.id} disabled={disabledValues.includes(item.id)}>
-            {item.label}
-          </option>
-        ))}
+        {QUALITY_OPTIONS.map((item) => {
+          const disabled = disabledValues.includes(item.id)
+          return (
+            <option key={item.id} value={item.id} disabled={disabled}>
+              {disabled ? `${item.label}（无）` : item.label}
+            </option>
+          )
+        })}
       </select>
     </label>
   )
@@ -305,6 +319,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [mvVolume, setMvVolume] = useState(getMvVolume)
   const [mvBrightness, setMvBrightness] = useState(getMvBrightness)
   const [danmakuOn, setDanmakuOn] = useState(getDanmakuEnabled)
+  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [commentTotal, setCommentTotal] = useState<number | null>(null)
+  const [pictureTop, setPictureTop] = useState(12)
   const [bullets, setBullets] = useState<SongComment[]>([])
   const [queued, setQueued] = useState<MusicItem | null>(null)
   const [queue, setQueue] = useState<MusicItem[]>([])
@@ -365,6 +382,37 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => observer.disconnect()
   }, [lyricOpen, audio, mv, pending, queued])
 
+  useEffect(() => {
+    if (stage !== 'mv') return
+    const video = videoRef.current
+    if (!video) return
+    const measure = () => {
+      const node = videoRef.current
+      if (!node) return
+      const { videoWidth, videoHeight, clientWidth, clientHeight } = node
+      if (!videoWidth || !videoHeight || !clientHeight) {
+        setPictureTop(stageClean ? 12 : fullscreen ? 72 : 12)
+        return
+      }
+      const scale = Math.min(clientWidth / videoWidth, clientHeight / videoHeight)
+      const letterbox = Math.max(0, (clientHeight - videoHeight * scale) / 2)
+      const offset = node.offsetTop
+      const chrome = fullscreen && !stageClean ? 64 : 0
+      setPictureTop(Math.round(Math.max(offset + letterbox + 10, chrome + 8)))
+    }
+    measure()
+    video.addEventListener('loadedmetadata', measure)
+    const observer = new ResizeObserver(measure)
+    observer.observe(video)
+    if (video.parentElement) observer.observe(video.parentElement)
+    window.addEventListener('resize', measure)
+    return () => {
+      video.removeEventListener('loadedmetadata', measure)
+      observer.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [stage, mv?.url, fullscreen, stageClean])
+
   const lyricSong = audio?.song.id ? audio.song : queued
   const lyricId = lyricSong?.id ?? ''
   const talkId = stage === 'mv' && mv?.song.id ? mv.song.id : lyricOpen && lyricSong?.id ? lyricSong.id : ''
@@ -388,6 +436,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [danmakuOn, talkId])
 
+  useEffect(() => {
+    const id = lyricOpen && stage !== 'mv' ? lyricSong?.id ?? '' : ''
+    if (!id) {
+      setCommentTotal(null)
+      return
+    }
+    let cancel = false
+    setCommentTotal(null)
+    fetchComments(id, 1, 1)
+      .then((result) => {
+        if (!cancel) setCommentTotal(result.total)
+      })
+      .catch(() => {
+        if (!cancel) setCommentTotal(null)
+      })
+    return () => {
+      cancel = true
+    }
+  }, [lyricOpen, stage, lyricSong?.id])
+
   const toggleDanmaku = () => {
     setDanmakuOn((value) => {
       const next = !value
@@ -397,7 +465,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }
 
   const danmaku = danmakuOn && bullets.length ? (
-    <DanmakuLayer items={bullets} current={current} duration={duration} paused={paused} />
+    <DanmakuLayer
+      items={bullets}
+      current={current}
+      duration={duration}
+      paused={paused}
+      insetTop={stage === 'mv' ? pictureTop : 0}
+    />
   ) : null
   const hidePoster = (url: string) => {
     setBrokenPosters((list) => (list.includes(url) ? list : [...list, url]))
@@ -832,8 +906,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return
     }
     const song = mv.song
-    const catalog = listedMvQualities(song.mvFormats)
-    if (catalog) setMvQualityOptions(catalog)
+    const catalog = listedMvQualities(song.mvFormats) ?? ['sd']
+    setMvQualityOptions(catalog)
     let cancel = false
     getPlayableMvQualities(song.id, song.mvId ?? '', song.mvFormats)
       .then((list) => {
@@ -1138,9 +1212,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               <strong>{lyricSong.title}</strong>
               <span>{lyricSong.artist}</span>
             </div>
-            <DanmakuSwitch on={danmakuOn} onClick={toggleDanmaku} />
+            <div className="lyric-tools">
+              <button
+                type="button"
+                className={`comment-toggle${commentsOpen ? ' is-on' : ''}`}
+                aria-pressed={commentsOpen}
+                onClick={() => setCommentsOpen((open) => !open)}
+              >
+                <CommentIcon />
+                <span className="comment-toggle-text">评论</span>
+                {commentTotal !== null ? <span className="comment-toggle-count">{formatCommentCount(commentTotal)}</span> : null}
+              </button>
+              <DanmakuSwitch on={danmakuOn} onClick={toggleDanmaku} />
+            </div>
           </header>
-          <div className="lyric-body has-comments">
+          <div className={`lyric-body${commentsOpen ? ' has-comments' : ''}`}>
             <div className={`lyric-disc${paused ? '' : ' is-on'}`}>
               <div className="lyric-poster">
                 <div className="lyric-disc-ring" />
@@ -1165,6 +1251,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                   )}
                 </div>
               </div>
+              {danmaku ? <div className="lyric-danmaku">{danmaku}</div> : null}
               {posters.length > 1 ? (
                 <div className="poster-dots" role="tablist" aria-label="海报">
                   {posters.map((url, index) => (
@@ -1184,8 +1271,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               ) : null}
               <QualitySwitch label="清晰度" value={posterQuality} onChange={choosePosterQuality} />
             </div>
-            <LyricView lines={lyrics} status={lyricStatus} current={current} onSeek={(time) => seek(time, true)} overlay={danmaku} />
-            <CommentPanel songId={lyricSong.id} />
+            <LyricView lines={lyrics} status={lyricStatus} current={current} onSeek={(time) => seek(time, true)} />
+            {commentsOpen ? <CommentPanel songId={lyricSong.id} /> : null}
           </div>
         </div>
       ) : null}
@@ -1228,7 +1315,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                 </span>
               </div>
               <div className="stage-tools">
-                <DanmakuSwitch on={danmakuOn} onClick={toggleDanmaku} />
+                {stage === 'mv' ? <DanmakuSwitch on={danmakuOn} onClick={toggleDanmaku} /> : null}
                 <button
                   type="button"
                   className="stage-tool"
@@ -1243,8 +1330,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                   <QualitySwitch
                     toolbar
                     label="清晰度"
-                    value={mvQualityOptions && !mvQualityOptions.includes(mvQuality) ? nearestQuality(mvQuality, mvQualityOptions) : mvQuality}
-                    disabledValues={mvQualityOptions ? QUALITY_OPTIONS.filter((item) => !mvQualityOptions.includes(item.id)).map((item) => item.id) : []}
+                    value={(mvQualityOptions ?? ['sd']).includes(mvQuality) ? mvQuality : nearestQuality(mvQuality, mvQualityOptions ?? ['sd'])}
+                    disabledValues={QUALITY_OPTIONS.filter((item) => !(mvQualityOptions ?? ['sd']).includes(item.id)).map((item) => item.id)}
                     onChange={chooseMvQuality}
                   />
                 ) : null}
@@ -1301,7 +1388,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                 <div className="audio-cover">
                   {coverUrl(active.song.image) ? <img src={coverUrl(active.song.image)} alt="" /> : <span />}
                 </div>
-                <LyricView lines={lyrics} status={lyricStatus} current={current} onSeek={(time) => seek(time, true)} overlay={danmaku} />
+                <LyricView lines={lyrics} status={lyricStatus} current={current} onSeek={(time) => seek(time, true)} />
               </div>
             )}
             <div className="stage-bar">

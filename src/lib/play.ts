@@ -121,7 +121,8 @@ async function resolvePlayableMvQualities(rid: string, mvId: string, formats?: s
     seen.add(token)
     playable.push(quality)
   }
-  return playable.length > 0 ? playable : (catalog ?? ['sd'])
+  const fallback: MvQuality[] = ['sd']
+  return playable.length > 0 ? playable : fallback
 }
 
 export function getMediaUrl(rid: string, kind: 'audio' | 'mv', quality: MvQuality = 'fhd', mvId = ''): Promise<string> {
