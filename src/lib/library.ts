@@ -10,6 +10,7 @@ const KEYS = {
   mvQuality: 'fmusic_website_mv_quality',
   mvVolume: 'fmusic_website_mv_volume',
   mvBrightness: 'fmusic_website_mv_brightness',
+  danmaku: 'fmusic_website_danmaku',
 } as const
 
 export type PictureQuality = 'sd' | 'hd' | 'fhd'
@@ -135,4 +136,12 @@ export function getMvBrightness() {
 
 export function saveMvBrightness(value: number) {
   localStorage.setItem(KEYS.mvBrightness, String(value))
+}
+
+export function getDanmakuEnabled() {
+  return localStorage.getItem(KEYS.danmaku) !== '0'
+}
+
+export function saveDanmakuEnabled(on: boolean) {
+  localStorage.setItem(KEYS.danmaku, on ? '1' : '0')
 }

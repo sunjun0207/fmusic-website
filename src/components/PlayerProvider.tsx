@@ -1,9 +1,13 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import { PlayQueue } from './PlayQueue'
+import { CommentPanel } from './CommentPanel'
+import { DanmakuLayer } from './DanmakuLayer'
 import { LyricView } from './LyricView'
+import { fetchDanmaku, type SongComment } from '../lib/comment'
 import {
   addRecentPlay,
   clearFavorites,
+  getDanmakuEnabled,
   getMvBrightness,
   getMvQuality,
   getMvVolume,
@@ -12,6 +16,7 @@ import {
   getRecentPlays,
   isFavorite,
   removeFavorite,
+  saveDanmakuEnabled,
   saveMvBrightness,
   saveMvQuality,
   saveMvVolume,
@@ -170,6 +175,22 @@ function QualitySwitch({
   )
 }
 
+function DanmakuSwitch({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`danmaku-switch${on ? ' is-on' : ''}`}
+      role="switch"
+      aria-checked={on}
+      aria-label={on ? '关闭弹幕' : '打开弹幕'}
+      onClick={onClick}
+    >
+      <span>弹幕</span>
+      <i />
+    </button>
+  )
+}
+
 function LevelControl({
   label,
   value,
@@ -283,6 +304,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [mvQualityOptions, setMvQualityOptions] = useState<PictureQuality[] | null>(null)
   const [mvVolume, setMvVolume] = useState(getMvVolume)
   const [mvBrightness, setMvBrightness] = useState(getMvBrightness)
+  const [danmakuOn, setDanmakuOn] = useState(getDanmakuEnabled)
+  const [bullets, setBullets] = useState<SongComment[]>([])
   const [queued, setQueued] = useState<MusicItem | null>(null)
   const [queue, setQueue] = useState<MusicItem[]>([])
   const [playMode, setPlayMode] = useState<PlayMode>(() => getPlayMode())
@@ -344,6 +367,38 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const lyricSong = audio?.song.id ? audio.song : queued
   const lyricId = lyricSong?.id ?? ''
+  const talkId = stage === 'mv' && mv?.song.id ? mv.song.id : lyricOpen && lyricSong?.id ? lyricSong.id : ''
+
+  useEffect(() => {
+    if (!danmakuOn || !talkId) {
+      setBullets([])
+      return
+    }
+    let cancel = false
+    setBullets([])
+    fetchDanmaku(talkId)
+      .then((list) => {
+        if (!cancel) setBullets(list)
+      })
+      .catch(() => {
+        if (!cancel) setBullets([])
+      })
+    return () => {
+      cancel = true
+    }
+  }, [danmakuOn, talkId])
+
+  const toggleDanmaku = () => {
+    setDanmakuOn((value) => {
+      const next = !value
+      saveDanmakuEnabled(next)
+      return next
+    })
+  }
+
+  const danmaku = danmakuOn && bullets.length ? (
+    <DanmakuLayer items={bullets} current={current} duration={duration} paused={paused} />
+  ) : null
   const hidePoster = (url: string) => {
     setBrokenPosters((list) => (list.includes(url) ? list : [...list, url]))
   }
@@ -1083,8 +1138,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               <strong>{lyricSong.title}</strong>
               <span>{lyricSong.artist}</span>
             </div>
+            <DanmakuSwitch on={danmakuOn} onClick={toggleDanmaku} />
           </header>
-          <div className="lyric-body">
+          <div className="lyric-body has-comments">
             <div className={`lyric-disc${paused ? '' : ' is-on'}`}>
               <div className="lyric-poster">
                 <div className="lyric-disc-ring" />
@@ -1128,7 +1184,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               ) : null}
               <QualitySwitch label="清晰度" value={posterQuality} onChange={choosePosterQuality} />
             </div>
-            <LyricView lines={lyrics} status={lyricStatus} current={current} onSeek={(time) => seek(time, true)} />
+            <LyricView lines={lyrics} status={lyricStatus} current={current} onSeek={(time) => seek(time, true)} overlay={danmaku} />
+            <CommentPanel songId={lyricSong.id} />
           </div>
         </div>
       ) : null}
@@ -1171,6 +1228,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                 </span>
               </div>
               <div className="stage-tools">
+                <DanmakuSwitch on={danmakuOn} onClick={toggleDanmaku} />
                 <button
                   type="button"
                   className="stage-tool"
@@ -1216,31 +1274,34 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               {error ? <p className="stage-note">{error}</p> : null}
             </header>
             {stage === 'mv' && mv ? (
-              <video
-                ref={videoRef}
-                src={mv.url}
-                poster={coverUrl(mv.song.mvPic) || undefined}
-                style={mvBrightness === 100 ? undefined : { filter: `brightness(${mvBrightness / 100})` }}
-                playsInline
-                onClick={() => setStageClean((value) => !value)}
-                onPlay={() => bind(videoRef.current)}
-                onPause={() => bind(videoRef.current)}
-                onTimeUpdate={() => bind(videoRef.current)}
-                onLoadedMetadata={(event) => {
-                  const mark = videoTimeRef.current
-                  if (mark > 0.3) event.currentTarget.currentTime = mark
-                  videoTimeRef.current = 0
-                  event.currentTarget.volume = mvVolume / 100
-                  bind(event.currentTarget)
-                  if (mark > 0.3) void event.currentTarget.play().catch(() => undefined)
-                }}
-              />
+              <div className="stage-picture">
+                <video
+                  ref={videoRef}
+                  src={mv.url}
+                  poster={coverUrl(mv.song.mvPic) || undefined}
+                  style={mvBrightness === 100 ? undefined : { filter: `brightness(${mvBrightness / 100})` }}
+                  playsInline
+                  onClick={() => setStageClean((value) => !value)}
+                  onPlay={() => bind(videoRef.current)}
+                  onPause={() => bind(videoRef.current)}
+                  onTimeUpdate={() => bind(videoRef.current)}
+                  onLoadedMetadata={(event) => {
+                    const mark = videoTimeRef.current
+                    if (mark > 0.3) event.currentTarget.currentTime = mark
+                    videoTimeRef.current = 0
+                    event.currentTarget.volume = mvVolume / 100
+                    bind(event.currentTarget)
+                    if (mark > 0.3) void event.currentTarget.play().catch(() => undefined)
+                  }}
+                />
+                {danmaku}
+              </div>
             ) : (
               <div className="audio-stage">
                 <div className="audio-cover">
                   {coverUrl(active.song.image) ? <img src={coverUrl(active.song.image)} alt="" /> : <span />}
                 </div>
-                <LyricView lines={lyrics} status={lyricStatus} current={current} onSeek={(time) => seek(time, true)} />
+                <LyricView lines={lyrics} status={lyricStatus} current={current} onSeek={(time) => seek(time, true)} overlay={danmaku} />
               </div>
             )}
             <div className="stage-bar">

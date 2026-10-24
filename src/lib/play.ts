@@ -1,3 +1,4 @@
+import { API_BASE } from './api'
 import { buildMvNmobiPath, buildNmobiPath } from './kuwoDes'
 
 const KUWO_KW_HOST = /^kw-[a-z0-9-]+\.kuwo\.cn$/i
@@ -50,7 +51,7 @@ export function toProxyMediaUrl(url: string): string {
   try {
     const parsed = new URL(url)
     if (!KUWO_MEDIA_HOST.test(parsed.hostname)) return url
-    return `/proxy/kw-audio/${parsed.hostname}${parsed.pathname}${parsed.search}`
+    return `${API_BASE}/kw-audio/${parsed.hostname}${parsed.pathname}${parsed.search}`
   } catch {
     return url
   }
@@ -75,7 +76,7 @@ function mediaFileKey(url: string) {
 
 async function fetchQualityToken(rid: string, quality: MvQuality) {
   const code = MV_QUALITY_CODE[quality]
-  const web = `/proxy/kw-nmobi/mobi.s?f=web&type=convert_mv_url&rid=${encodeURIComponent(rid)}&quality=${code}&format=mp4`
+  const web = `${API_BASE}/kw-nmobi/mobi.s?f=web&type=convert_mv_url&rid=${encodeURIComponent(rid)}&quality=${code}&format=mp4`
   const res = await fetch(web, { signal: AbortSignal.timeout(8000) })
   const text = (await res.text()).trim().split(/\s+/)[0] ?? ''
   if (!res.ok || !/^https?:\/\//i.test(text)) return ''
@@ -182,7 +183,7 @@ async function readVideoHead(proxyUrl: string) {
 async function acceptQualityUrl(url: string) {
   if (isDirectVideo(url)) return toProxyMediaUrl(url)
   const proxied = toProxyMediaUrl(url)
-  if (!proxied.startsWith('/proxy/')) return ''
+  if (!proxied.startsWith(`${API_BASE}/`)) return ''
   if (!gatewayAlive) {
     const check = readVideoHead(proxied).catch(() => false)
     gatewayAlive = check
@@ -194,7 +195,7 @@ async function acceptQualityUrl(url: string) {
 
 async function fetchQualityUrl(rid: string, quality: MvQuality) {
   const code = MV_QUALITY_CODE[quality]
-  const web = `/proxy/kw-nmobi/mobi.s?f=web&type=convert_mv_url&rid=${encodeURIComponent(rid)}&quality=${code}&format=mp4`
+  const web = `${API_BASE}/kw-nmobi/mobi.s?f=web&type=convert_mv_url&rid=${encodeURIComponent(rid)}&quality=${code}&format=mp4`
   const res = await fetch(web, { signal: AbortSignal.timeout(8000) })
   const text = (await res.text()).trim().split(/\s+/)[0] ?? ''
   if (!res.ok || !/^https?:\/\//i.test(text)) return ''

@@ -5,6 +5,8 @@
   https://github.com/Levi233/MusicPlayer/blob/master/app/src/main/java/com/chenhao/musicplayer/utils/crypt/KuwoDES.java
 */
 
+import { API_BASE } from './api'
+
 type LongLike = {
   low: number
   valueOf: () => bigint
@@ -240,7 +242,7 @@ export const buildPlain = (rid: string, format = 'mp3', br?: string): string => 
 
 export const buildNmobiPath = (rid: string, format = 'mp3', br = '320kmp3'): string => {
   const q = encryptQuery(buildPlain(rid, format, br || undefined))
-  return `/proxy/kw-nmobi/mobi.s?f=kuwo&q=${encodeURIComponent(q)}`
+  return `${API_BASE}/kw-nmobi/mobi.s?f=kuwo&q=${encodeURIComponent(q)}`
 }
 
 export const buildMvPlain = (rid: string): string =>
@@ -248,5 +250,5 @@ export const buildMvPlain = (rid: string): string =>
 
 export const buildMvNmobiPath = (rid: string): string => {
   const q = encryptQuery(buildMvPlain(rid))
-  return `/proxy/kw-nmobi/mobi.s?f=kuwo&q=${encodeURIComponent(q)}`
+  return `${API_BASE}/kw-nmobi/mobi.s?f=kuwo&q=${encodeURIComponent(q)}`
 }

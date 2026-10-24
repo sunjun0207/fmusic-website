@@ -54,7 +54,7 @@ function proxyKuwoAudio(req: IncomingMessage, res: ServerResponse, target: URL, 
 
 function kuwoAudioProxy(req: IncomingMessage, res: ServerResponse, next: () => void) {
   const raw = req.url || ''
-  const matched = raw.match(/^\/proxy\/kw-audio\/([a-z0-9.-]+\.kuwo\.cn)(\/.*)$/i)
+  const matched = raw.match(/^\/api-fmusic-pomelo7-server\/kw-audio\/([a-z0-9.-]+\.kuwo\.cn)(\/.*)$/i)
   if (!matched || !isKuwoAudioHost(matched[1])) {
     next()
     return
@@ -84,12 +84,16 @@ export default defineConfig(({ mode }) => {
     ...(headers ? { headers } : {}),
   })
   const proxy = {
-    '/proxy/kw-search': proxyRule('/proxy/kw-search', env.VITE_KW_SEARCH_TARGET || 'http://search.kuwo.cn'),
-    '/proxy/kw-openapi': proxyRule('/proxy/kw-openapi', env.VITE_KW_OPENAPI_TARGET || 'https://kuwo.cn'),
-    '/proxy/kw-img': proxyRule('/proxy/kw-img', env.VITE_KW_IMG_TARGET || 'https://img1.kuwo.cn'),
-    '/proxy/kw-cdn': proxyRule('/proxy/kw-cdn', env.VITE_KW_CDN_TARGET || 'http://kw-er.kuwo.cn'),
-    '/proxy/kw-nmobi': proxyRule('/proxy/kw-nmobi', env.VITE_KW_NMOBI_TARGET || 'http://nmobi.kuwo.cn', {
+    '/api-fmusic-pomelo7-server/kw-search': proxyRule('/api-fmusic-pomelo7-server/kw-search', env.VITE_KW_SEARCH_TARGET || 'http://search.kuwo.cn'),
+    '/api-fmusic-pomelo7-server/kw-openapi': proxyRule('/api-fmusic-pomelo7-server/kw-openapi', env.VITE_KW_OPENAPI_TARGET || 'https://kuwo.cn'),
+    '/api-fmusic-pomelo7-server/kw-img': proxyRule('/api-fmusic-pomelo7-server/kw-img', env.VITE_KW_IMG_TARGET || 'https://img1.kuwo.cn'),
+    '/api-fmusic-pomelo7-server/kw-cdn': proxyRule('/api-fmusic-pomelo7-server/kw-cdn', env.VITE_KW_CDN_TARGET || 'http://kw-er.kuwo.cn'),
+    '/api-fmusic-pomelo7-server/kw-nmobi': proxyRule('/api-fmusic-pomelo7-server/kw-nmobi', env.VITE_KW_NMOBI_TARGET || 'http://nmobi.kuwo.cn', {
       'User-Agent': 'okhttp/3.10.0',
+    }),
+    '/api-fmusic-pomelo7-server/kw-comment': proxyRule('/api-fmusic-pomelo7-server/kw-comment', env.VITE_KW_COMMENT_TARGET || 'https://ncomment.kuwo.cn', {
+      Referer: 'https://www.kuwo.cn/',
+      'User-Agent': 'Mozilla/5.0',
     }),
   }
 

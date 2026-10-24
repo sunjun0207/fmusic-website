@@ -11,6 +11,7 @@ interface ImportMetaEnv {
   readonly VITE_KW_IMG_TARGET: string
   readonly VITE_KW_NMOBI_TARGET: string
   readonly VITE_KW_CDN_TARGET: string
+  readonly VITE_KW_COMMENT_TARGET: string
 }
 
 interface ImportMeta {

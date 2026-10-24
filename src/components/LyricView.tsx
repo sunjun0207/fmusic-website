@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { LyricLine } from '../lib/lyric'
 
 type Props = {
@@ -6,6 +6,7 @@ type Props = {
   status: 'loading' | 'ready' | 'empty'
   current: number
   onSeek: (time: number) => void
+  overlay?: ReactNode
 }
 
 function clock(sec: number) {
@@ -34,7 +35,7 @@ function scrollLine(root: HTMLElement, index: number, smooth: boolean) {
   root.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' })
 }
 
-export function LyricView({ lines, status, current, onSeek }: Props) {
+export function LyricView({ lines, status, current, onSeek, overlay }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const userLockRef = useRef(false)
   const programmaticRef = useRef(false)
@@ -146,6 +147,7 @@ export function LyricView({ lines, status, current, onSeek }: Props) {
 
   return (
     <div className={`lyric-view${pick !== null ? ' is-picking' : ''}`}>
+      {overlay}
       {pick !== null && lines[pick] ? (
         <button
           type="button"

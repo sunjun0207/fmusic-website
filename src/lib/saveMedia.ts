@@ -1,3 +1,4 @@
+import { API_BASE } from './api'
 import { toProxyMediaUrl } from './play'
 
 function cleanPart(raw: string) {
@@ -30,7 +31,7 @@ function isMedia(bytes: Uint8Array, contentType: string) {
 
 export async function saveMedia(url: string, filename: string) {
   const proxyUrl = toProxyMediaUrl(url)
-  if (!proxyUrl.startsWith('/proxy/')) throw new Error('下载地址无效')
+  if (!proxyUrl.startsWith(`${API_BASE}/`)) throw new Error('下载地址无效')
   const res = await fetch(proxyUrl)
   if (!res.ok) throw new Error('下载失败')
   const bytes = new Uint8Array(await res.arrayBuffer())

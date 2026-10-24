@@ -1586,6 +1586,11 @@ body.lyric-open {
   background: #000;
 }
 
+.stage-picture {
+  position: relative;
+  width: 100%;
+}
+
 .stage video {
   object-fit: contain;
   cursor: pointer;
@@ -1683,7 +1688,7 @@ body.lyric-open {
 
 .lyric-screen-bar {
   display: grid;
-  grid-template-columns: 88px 1fr 88px;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
   align-items: center;
   padding: 16px 28px 4px;
 }
@@ -1695,6 +1700,68 @@ body.lyric-open {
   background: rgba(0, 0, 0, 0.2);
   color: #fff;
   padding: 6px 14px;
+}
+
+.danmaku-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 6px 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.lyric-screen-bar .danmaku-switch {
+  justify-self: end;
+}
+
+.danmaku-switch i {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  transition: background 0.2s ease;
+}
+
+.danmaku-switch i::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  transition: transform 0.2s ease;
+}
+
+.danmaku-switch.is-on {
+  border-color: rgba(58, 209, 200, 0.72);
+}
+
+.danmaku-switch.is-on i {
+  background: var(--teal);
+}
+
+.danmaku-switch.is-on i::after {
+  transform: translateX(18px);
+}
+
+.stage-tools .danmaku-switch {
+  height: 30px;
+  padding-left: 10px;
+  border-color: transparent;
+  background: transparent;
 }
 
 .lyric-heading {
@@ -1730,6 +1797,170 @@ body.lyric-open {
   align-items: stretch;
   width: min(1080px, calc(100% - 56px));
   margin: 0 auto 8px;
+}
+
+.lyric-body.has-comments {
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr) minmax(240px, 320px);
+  gap: 28px;
+  width: min(1180px, calc(100% - 48px));
+}
+
+.comment-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 4px 0 8px 4px;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+.comment-panel header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.comment-panel header strong {
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.comment-panel header span,
+.comment-state,
+.comment-item time,
+.comment-item em {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.comment-state {
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.comment-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 8px 0 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.comment-item {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.comment-item img,
+.comment-item > span {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.16);
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+}
+
+.comment-item strong,
+.comment-item time {
+  display: block;
+}
+
+.comment-item strong {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.comment-item p {
+  margin: 6px 0 0;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.comment-item em {
+  display: block;
+  margin-top: 4px;
+}
+
+.comment-more {
+  flex: none;
+  align-self: center;
+  margin-top: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  padding: 6px 16px;
+  font-size: 13px;
+}
+
+.comment-more:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.danmaku-layer {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 100px;
+  overflow: hidden;
+  pointer-events: none;
+  container-type: inline-size;
+}
+
+.danmaku-item {
+  position: absolute;
+  left: 100%;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.28));
+  animation-name: danmaku-fly;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+.danmaku-layer.is-paused .danmaku-item {
+  animation-play-state: paused;
+}
+
+@keyframes danmaku-fly {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  16% {
+    opacity: 0.72;
+  }
+  72% {
+    opacity: 0.62;
+  }
+  100% {
+    transform: translateX(calc(-100cqi - 100%));
+    opacity: 0;
+  }
 }
 
 .lyric-disc {
@@ -2036,9 +2267,18 @@ body.lyric-open {
 }
 
 @media (max-width: 860px) {
-  .lyric-body {
+  .lyric-body,
+  .lyric-body.has-comments {
     grid-template-columns: 1fr;
     width: min(640px, calc(100% - 28px));
+  }
+
+  .comment-panel {
+    height: auto;
+    max-height: 280px;
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    padding: 12px 0 0;
   }
 
   .lyric-disc {
@@ -2179,6 +2419,13 @@ body.lyric-open {
   height: 100%;
   max-height: none;
   object-fit: contain;
+}
+
+.stage:fullscreen .stage-picture,
+.stage:-webkit-full-screen .stage-picture,
+.stage.is-fullscreen .stage-picture {
+  position: absolute;
+  inset: 0;
 }
 
 .stage:fullscreen header,

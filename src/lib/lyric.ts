@@ -1,3 +1,4 @@
+import { API_BASE } from './api'
 import { plainText } from './text'
 
 export type LyricLine = {
@@ -23,7 +24,7 @@ export function prefetchLyric(musicId: string) {
 }
 
 async function fetchLyric(musicId: string): Promise<LyricLine[]> {
-  const res = await fetch(`/proxy/kw-openapi/openapi/v1/www/lyric/getlyric?musicId=${encodeURIComponent(musicId)}`)
+  const res = await fetch(`${API_BASE}/kw-openapi/openapi/v1/www/lyric/getlyric?musicId=${encodeURIComponent(musicId)}`)
   if (!res.ok) throw new Error('歌词获取失败')
   const data = (await res.json()) as {
     data?: { lrclist?: LyricLine[]; lrcList?: LyricLine[] }

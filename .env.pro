@@ -13,3 +13,4 @@ VITE_KW_OPENAPI_TARGET=https://kuwo.cn
 VITE_KW_NMOBI_TARGET=http://nmobi.kuwo.cn
 VITE_KW_IMG_TARGET=https://img1.kuwo.cn
 VITE_KW_CDN_TARGET=http://kw-er.kuwo.cn
+VITE_KW_COMMENT_TARGET=https://ncomment.kuwo.cn

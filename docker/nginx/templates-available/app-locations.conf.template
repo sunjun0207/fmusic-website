@@ -24,29 +24,36 @@ location / {
     try_files $uri $uri/ /index.html;
 }
 
-location /proxy/kw-search/ {
+location /api-fmusic-pomelo7-server/kw-search/ {
     proxy_pass ${VITE_KW_SEARCH_TARGET}/;
     include /etc/nginx/snippets/proxy-common.conf;
 }
 
-location /proxy/kw-openapi/ {
+location /api-fmusic-pomelo7-server/kw-openapi/ {
     proxy_pass ${VITE_KW_OPENAPI_TARGET}/;
     include /etc/nginx/snippets/proxy-common.conf;
 }
 
-location /proxy/kw-nmobi/ {
+location /api-fmusic-pomelo7-server/kw-nmobi/ {
     proxy_pass ${VITE_KW_NMOBI_TARGET}/;
     include /etc/nginx/snippets/proxy-common.conf;
     proxy_set_header User-Agent "okhttp/3.10.0";
 }
 
-location /proxy/kw-img/ {
+location /api-fmusic-pomelo7-server/kw-img/ {
     proxy_pass ${VITE_KW_IMG_TARGET}/;
     include /etc/nginx/snippets/proxy-common.conf;
     expires 7d;
 }
 
-location /proxy/kw-cdn/ {
+location /api-fmusic-pomelo7-server/kw-comment/ {
+    proxy_pass ${VITE_KW_COMMENT_TARGET}/;
+    include /etc/nginx/snippets/proxy-common.conf;
+    proxy_set_header Referer "https://www.kuwo.cn/";
+    proxy_set_header User-Agent "Mozilla/5.0";
+}
+
+location /api-fmusic-pomelo7-server/kw-cdn/ {
     proxy_pass ${VITE_KW_CDN_TARGET}/;
     include /etc/nginx/snippets/proxy-common.conf;
     proxy_buffering off;
@@ -54,11 +61,11 @@ location /proxy/kw-cdn/ {
     proxy_read_timeout 300s;
 }
 
-location ~* ^/proxy/kw-audio/(?<audio_host>(?!.*\.\.)[a-z0-9.-]+\.kuwo\.cn)/ {
+location ~* ^/api-fmusic-pomelo7-server/kw-audio/(?<audio_host>(?!.*\.\.)[a-z0-9.-]+\.kuwo\.cn)/ {
     resolver 223.5.5.5 119.29.29.29 valid=300s ipv6=off;
     resolver_timeout 5s;
     set $audio_backend $audio_host;
-    rewrite ^/proxy/kw-audio/[^/]+(/.*)$ $1 break;
+    rewrite ^/api-fmusic-pomelo7-server/kw-audio/[^/]+(/.*)$ $1 break;
     proxy_pass http://$audio_backend$uri$is_args$args;
     proxy_http_version 1.1;
     proxy_set_header Connection "";
@@ -67,14 +74,14 @@ location ~* ^/proxy/kw-audio/(?<audio_host>(?!.*\.\.)[a-z0-9.-]+\.kuwo\.cn)/ {
     proxy_set_header Referer "";
     proxy_set_header Accept-Encoding "";
     proxy_hide_header Content-Disposition;
-    proxy_redirect ~*^https?://([a-z0-9.-]+\.kuwo\.cn)(/.*)$ /proxy/kw-audio/$1$2;
+    proxy_redirect ~*^https?://([a-z0-9.-]+\.kuwo\.cn)(/.*)$ /api-fmusic-pomelo7-server/kw-audio/$1$2;
     proxy_connect_timeout 5s;
     proxy_buffering off;
     proxy_request_buffering off;
     proxy_read_timeout 300s;
 }
 
-location /proxy/ {
+location /api-fmusic-pomelo7-server/ {
     default_type text/plain;
     return 404;
 }

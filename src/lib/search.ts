@@ -1,3 +1,4 @@
+import { API_BASE } from './api'
 import { plainText } from './text'
 
 export type MusicItem = {
@@ -103,7 +104,7 @@ export function coverUrl(path?: string, kind: 'album' | 'artist' = 'album') {
           url.protocol = 'https:'
           return url.toString()
         }
-        return `/proxy/kw-img${url.pathname}${url.search}`
+        return `${API_BASE}/kw-img${url.pathname}${url.search}`
       }
     } catch {
       return path
@@ -111,9 +112,9 @@ export function coverUrl(path?: string, kind: 'album' | 'artist' = 'album') {
     return path
   }
   const cleaned = path.replace(/^\/+/, '')
-  if (cleaned.startsWith('star/')) return `/proxy/kw-img/${cleaned}`
+  if (cleaned.startsWith('star/')) return `${API_BASE}/kw-img/${cleaned}`
   const root = kind === 'artist' ? 'star/starheads' : 'star/albumcover'
-  return `/proxy/kw-img/${root}/${cleaned}`
+  return `${API_BASE}/kw-img/${root}/${cleaned}`
 }
 
 function collectImages(album: string, artist: string, mv: string) {
@@ -187,7 +188,7 @@ export async function searchMusic(keyword: string, pn = 0, rn = 20): Promise<Sea
     encoding: 'utf8',
     vipver: '1',
   })
-  const res = await fetch(`/proxy/kw-search/r.s?${qs}`)
+  const res = await fetch(`${API_BASE}/kw-search/r.s?${qs}`)
   if (!res.ok) throw new Error('搜索失败')
   const text = await res.text()
   let data: Record<string, unknown>
@@ -240,7 +241,7 @@ export async function findPlayable(title: string, artist: string): Promise<Music
 export async function searchKey(keyword: string): Promise<string[]> {
   const q = keyword.trim()
   if (!q) return []
-  const res = await fetch(`/proxy/kw-openapi/openapi/v1/www/search/searchKey?key=${encodeURIComponent(q)}`)
+  const res = await fetch(`${API_BASE}/kw-openapi/openapi/v1/www/search/searchKey?key=${encodeURIComponent(q)}`)
   if (!res.ok) return []
   const data = (await res.json()) as { data?: unknown }
   const raw = data.data
