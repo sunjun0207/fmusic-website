@@ -73,6 +73,13 @@ export function LyricView({ lines, status, current, onSeek }: Props) {
   }
   activeRef.current = activeIndex
   const shown = pick ?? activeIndex
+  let sung = 0
+  if (activeIndex >= 0 && pick === null) {
+    const start = lines[activeIndex]!.time
+    const end = lines[activeIndex + 1]?.time ?? start + 6
+    const span = Math.max(0.6, end - start)
+    sung = Math.min(1, Math.max(0, (current - start) / span))
+  }
 
   const releaseFollow = (delay = 560) => {
     window.clearTimeout(timerRef.current)
@@ -213,6 +220,7 @@ export function LyricView({ lines, status, current, onSeek }: Props) {
         {status === 'ready'
           ? lines.map((line, index) => {
               const distance = shown < 0 ? 3 : Math.abs(index - shown)
+              const playing = pick === null && index === activeIndex
               const role =
                 distance === 0 ? (pick !== null ? ' picking' : ' active') : distance === 1 ? ' closer' : distance === 2 ? ' near' : ''
               return (
@@ -229,7 +237,14 @@ export function LyricView({ lines, status, current, onSeek }: Props) {
                     commit(index)
                   }}
                 >
-                  {line.lineLyric}
+                  <span className="lyric-words">
+                    {line.lineLyric}
+                    {playing ? (
+                      <span className="lyric-sweep" style={{ width: `${(sung * 100).toFixed(1)}%` }} aria-hidden="true">
+                        {line.lineLyric}
+                      </span>
+                    ) : null}
+                  </span>
                 </button>
               )
             })

@@ -1,3 +1,5 @@
+import { plainText } from './text'
+
 export type MusicItem = {
   id: string
   title: string
@@ -5,6 +7,7 @@ export type MusicItem = {
   album: string
   duration: number
   image?: string
+  images?: string[]
   hasMv: boolean
   mvPic?: string
 }
@@ -24,14 +27,7 @@ function pick<T>(obj: Record<string, unknown>, ...keys: string[]): T | undefined
 }
 
 function clean(value: unknown) {
-  return String(value ?? '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .trim()
+  return plainText(value)
 }
 
 function parseDuration(value: unknown) {
@@ -66,6 +62,7 @@ function mapSearchItem(raw: Record<string, unknown>): MusicItem | null {
   const album = clean(pick(raw, 'ALBUM', 'album'))
   const image = String(pick(raw, 'web_albumpic_short', 'albumPic', 'pic') ?? '')
   const mvPic = mvPicture(raw)
+  const images = collectImages(image, String(pick(raw, 'web_artistpic_short') ?? ''), mvPic)
   return {
     id,
     title,
@@ -73,12 +70,13 @@ function mapSearchItem(raw: Record<string, unknown>): MusicItem | null {
     album,
     duration: parseDuration(pick(raw, 'DURATION', 'duration')),
     image,
+    images,
     hasMv: songHasMv(raw),
     mvPic: mvPic || undefined,
   }
 }
 
-export function coverUrl(path?: string) {
+export function coverUrl(path?: string, kind: 'album' | 'artist' = 'album') {
   if (!path) return ''
   if (path.startsWith('http://') || path.startsWith('https://')) {
     try {
@@ -96,8 +94,20 @@ export function coverUrl(path?: string) {
     return path
   }
   const cleaned = path.replace(/^\/+/, '')
-  if (cleaned.startsWith('star/albumcover/')) return `/proxy/kw-img/${cleaned}`
-  return `/proxy/kw-img/star/albumcover/${cleaned}`
+  if (cleaned.startsWith('star/')) return `/proxy/kw-img/${cleaned}`
+  const root = kind === 'artist' ? 'star/starheads' : 'star/albumcover'
+  return `/proxy/kw-img/${root}/${cleaned}`
+}
+
+function collectImages(album: string, artist: string, mv: string) {
+  return [...new Set([coverUrl(album), coverUrl(artist, 'artist'), coverUrl(mv)].filter(Boolean))]
+}
+
+export function songPosters(song?: Pick<MusicItem, 'image' | 'images'> | null) {
+  const ready = (song?.images ?? []).filter(Boolean)
+  if (ready.length) return [...new Set(ready)]
+  const single = coverUrl(song?.image)
+  return single ? [single] : []
 }
 
 export function formatDuration(sec: number) {
@@ -215,8 +225,8 @@ export async function searchKey(keyword: string): Promise<string[]> {
 
   const extract = (text: string) => {
     const matched = text.match(/(?:^|\r?\n)RELWORD=([^\r\n]+)/i)
-    if (matched?.[1]) return matched[1].trim()
-    const first = text.split(/\t|\r?\n/)[0]?.trim() ?? ''
+    if (matched?.[1]) return plainText(matched[1])
+    const first = plainText(text.split(/\t|\r?\n/)[0] ?? '')
     if (/^[A-Z_]+=/.test(first)) return ''
     return first
   }
@@ -227,7 +237,7 @@ export async function searchKey(keyword: string): Promise<string[]> {
         if (typeof item === 'string') return extract(item)
         if (item && typeof item === 'object') {
           const row = item as Record<string, unknown>
-          return String(row.RELWORD ?? row.keyword ?? row.name ?? '').trim()
+          return plainText(row.RELWORD ?? row.keyword ?? row.name)
         }
         return ''
       })

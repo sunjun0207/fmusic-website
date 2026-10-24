@@ -15,7 +15,7 @@ import { getLyric, prefetchLyric, type LyricLine } from '../lib/lyric'
 import { nextPlayMode, PLAY_MODE_LABEL, resolveAdvance, type AdvanceDirection, type PlayMode } from '../lib/playback'
 import { mediaFilename, saveMedia } from '../lib/saveMedia'
 import { getMediaUrl, prefetchMedia } from '../lib/play'
-import { coverUrl, findPlayable, isSongWithoutMv, rememberNoMv, subscribeNoMv, type MusicItem } from '../lib/search'
+import { coverUrl, findPlayable, isSongWithoutMv, rememberNoMv, songPosters, subscribeNoMv, type MusicItem } from '../lib/search'
 
 type Kind = 'audio' | 'mv'
 type Loaded = { song: MusicItem; url: string }
@@ -109,9 +109,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [current, setCurrent] = useState(0)
   const [duration, setDuration] = useState(0)
   const [fullscreen, setFullscreen] = useState(false)
+  const [stageClean, setStageClean] = useState(false)
   const [lyrics, setLyrics] = useState<LyricLine[]>([])
   const [lyricStatus, setLyricStatus] = useState<'loading' | 'ready' | 'empty'>('empty')
   const [lyricOpen, setLyricOpen] = useState(false)
+  const [posterIndex, setPosterIndex] = useState(0)
+  const [brokenPosters, setBrokenPosters] = useState<string[]>([])
   const [queued, setQueued] = useState<MusicItem | null>(null)
   const [queue, setQueue] = useState<MusicItem[]>([])
   const [playMode, setPlayMode] = useState<PlayMode>(() => getPlayMode())
@@ -132,6 +135,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const modeRef = useRef<PlayMode>(playMode)
   const historyRef = useRef<string[]>([])
   const audioSongRef = useRef<MusicItem | null>(null)
+  const showLyricRef = useRef(true)
   queueRef.current = queue
   modeRef.current = playMode
   audioSongRef.current = audio?.song ?? null
@@ -168,6 +172,38 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const lyricSong = audio?.song.id ? audio.song : queued
   const lyricId = lyricSong?.id ?? ''
+  const hidePoster = (url: string) => {
+    setBrokenPosters((list) => (list.includes(url) ? list : [...list, url]))
+  }
+  const dockPosters = useMemo(
+    () => songPosters(dockSong).filter((url) => !brokenPosters.includes(url)),
+    [dockSong, brokenPosters],
+  )
+  const posters = useMemo(
+    () => songPosters(lyricSong).filter((url) => !brokenPosters.includes(url)),
+    [lyricSong, brokenPosters],
+  )
+  const posterToken = `${dockSong?.id ?? ''}|${lyricSong?.id ?? ''}|${dockPosters.join('|')}|${posters.join('|')}`
+  const posterCount = Math.max(dockPosters.length, posters.length)
+  const posterAt = posters.length ? posterIndex % posters.length : 0
+  const dockAt = dockPosters.length ? posterIndex % dockPosters.length : 0
+
+  const setLyricVisible = (open: boolean) => {
+    showLyricRef.current = open
+    setLyricOpen(open)
+  }
+
+  useEffect(() => {
+    setPosterIndex(0)
+  }, [posterToken])
+
+  useEffect(() => {
+    if (paused || posterCount < 2) return
+    const timer = window.setInterval(() => {
+      setPosterIndex((value) => (value + 1) % posterCount)
+    }, 6000)
+    return () => window.clearInterval(timer)
+  }, [paused, posterToken, posterCount])
 
   useEffect(() => {
     if (!lyricId) {
@@ -316,6 +352,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('fullscreenchange', sync)
   }, [])
 
+  useEffect(() => {
+    setStageClean(false)
+  }, [stage, fullscreen])
+
   const bind = (el: HTMLMediaElement | null) => {
     if (!el) return
     setPaused((value) => (value === el.paused ? value : el.paused))
@@ -355,10 +395,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setMv(null)
       setStage(null)
       setQueued(song)
-      setLyricOpen(true)
+      setLyricOpen(showLyricRef.current)
       setPlayingId(song.id)
       setPending(false)
-      if (!lyricOpen || !el) return
+      if (!el) return
       if (el.paused) void el.play()
       else el.pause()
       return
@@ -387,7 +427,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setDuration(0)
     if (kind === 'audio') {
       setQueued(song)
-      setLyricOpen(true)
+      setLyricOpen(showLyricRef.current)
       setMv(null)
       setStage(null)
       if (song.id) {
@@ -506,7 +546,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPending(true)
     if (kind === 'mv') silenceSong()
     if (kind === 'audio') {
-      setLyricOpen(true)
+      setLyricOpen(showLyricRef.current)
       setQueued({ id: '', title, artist, album: '', duration: 0, hasMv: false })
     }
     findPlayable(title, artist)
@@ -654,8 +694,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       {(audio || mv || queued) && (
         <div className="player-stack" ref={stackRef}>
           <div className="player-dock">
-          {coverUrl(dockSong?.image) ? (
-            <img className="song-cover" src={coverUrl(dockSong?.image)} alt="" />
+          {dockPosters.length ? (
+            <span className="song-cover poster-slot">
+              {dockPosters.map((url, index) => (
+                <img key={url} src={url} alt="" className={index === dockAt ? 'is-on' : ''} onError={() => hidePoster(url)} />
+              ))}
+            </span>
           ) : (
             <span className="song-cover" />
           )}
@@ -715,13 +759,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             ) : null}
             <button
               type="button"
-              className="text-btn"
+              className={activeKind !== 'mv' && lyricOpen ? 'text-btn is-on' : 'text-btn'}
+              aria-pressed={activeKind === 'mv' ? undefined : lyricOpen}
               onClick={() => {
-                if (activeKind === 'mv' && mv) setStage('mv')
-                else if (audio || queued) setLyricOpen(true)
+                if (activeKind === 'mv' && mv) {
+                  setStage('mv')
+                  return
+                }
+                if (audio || queued) setLyricVisible(!showLyricRef.current)
               }}
             >
-              {activeKind === 'mv' ? '全屏' : '歌词'}
+              {activeKind === 'mv' ? '全屏' : lyricOpen ? '隐藏歌词' : '显示歌词'}
             </button>
             {dockSong?.id ? (
               dockSong.hasMv && noMvTick >= 0 && !isSongWithoutMv(dockSong.id) ? (
@@ -740,14 +788,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       )}
       {lyricOpen && stage !== 'mv' && lyricSong ? (
         <div className="lyric-screen" role="dialog" aria-label={`${lyricSong.title} 歌词`}>
-          {coverUrl(lyricSong.image) ? (
-            <div className="lyric-bg" style={{ backgroundImage: `url(${JSON.stringify(coverUrl(lyricSong.image))})` }} />
-          ) : (
-            <div className="lyric-bg lyric-bg-empty" />
-          )}
+          <div className="lyric-bg-stack">
+            {posters.length ? (
+              posters.map((url, index) => (
+                <div
+                  key={url}
+                  className={`lyric-bg${index === posterAt ? ' is-on' : ''}`}
+                  style={{ backgroundImage: `url(${JSON.stringify(url)})` }}
+                />
+              ))
+            ) : (
+              <div className="lyric-bg lyric-bg-empty is-on" />
+            )}
+          </div>
           <div className="lyric-bg-mask" />
           <header className="lyric-screen-bar">
-            <button type="button" className="lyric-back" onClick={() => setLyricOpen(false)}>
+            <button type="button" className="lyric-back" onClick={() => setLyricVisible(false)}>
               收起
             </button>
             <div className="lyric-heading">
@@ -758,8 +814,34 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           <div className="lyric-body">
             <div className={`lyric-disc${paused ? '' : ' is-on'}`}>
               <div className="lyric-disc-ring">
-                {coverUrl(lyricSong.image) ? <img src={coverUrl(lyricSong.image)} alt="" /> : <span />}
+                {posters.length ? (
+                  posters.map((url, index) => (
+                    <img
+                      key={url}
+                      src={url}
+                      alt=""
+                      className={index === posterAt ? 'is-on' : ''}
+                      onError={() => hidePoster(url)}
+                    />
+                  ))
+                ) : (
+                  <span />
+                )}
               </div>
+              {posters.length > 1 ? (
+                <div className="poster-dots" role="tablist" aria-label="海报">
+                  {posters.map((url, index) => (
+                    <button
+                      key={url}
+                      type="button"
+                      className={index === posterAt ? 'is-on' : ''}
+                      aria-label={`第 ${index + 1} 张海报`}
+                      aria-selected={index === posterAt}
+                      onClick={() => setPosterIndex(index)}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </div>
             <LyricView lines={lyrics} status={lyricStatus} current={current} onSeek={(time) => seek(time, true)} />
           </div>
@@ -791,7 +873,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
       {stage && active ? (
         <div className="mv-layer" role="dialog" aria-modal="true" aria-label={active.song.title}>
-          <div className={`stage stage-${stage}${fullscreen ? ' is-fullscreen' : ''}`} ref={stageRef}>
+          <div
+            className={`stage stage-${stage}${fullscreen ? ' is-fullscreen' : ''}${stageClean ? ' is-clean' : ''}`}
+            ref={stageRef}
+          >
             <header>
               <div>
                 <strong>{active.song.title}</strong>
@@ -832,6 +917,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                 src={mv.url}
                 poster={coverUrl(mv.song.mvPic) || undefined}
                 playsInline
+                onClick={() => setStageClean((value) => !value)}
                 onPlay={() => bind(videoRef.current)}
                 onPause={() => bind(videoRef.current)}
                 onTimeUpdate={() => bind(videoRef.current)}

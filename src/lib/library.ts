@@ -1,5 +1,6 @@
 import type { PlayMode } from './playback'
 import type { MusicItem } from './search'
+import { plainText } from './text'
 
 const KEYS = {
   recentPlays: 'fmusic_website_recent_plays',
@@ -23,8 +24,17 @@ function writeJson(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value))
 }
 
+function presentSong(item: MusicItem): MusicItem {
+  return {
+    ...item,
+    title: plainText(item.title),
+    artist: plainText(item.artist),
+    album: plainText(item.album),
+  }
+}
+
 export function getRecentPlays(): MusicItem[] {
-  return readJson<MusicItem[]>(KEYS.recentPlays, [])
+  return readJson<MusicItem[]>(KEYS.recentPlays, []).map(presentSong)
 }
 
 export function addRecentPlay(item: MusicItem) {
@@ -35,7 +45,7 @@ export function addRecentPlay(item: MusicItem) {
 }
 
 export function getFavorites(): MusicItem[] {
-  return readJson<MusicItem[]>(KEYS.favorites, [])
+  return readJson<MusicItem[]>(KEYS.favorites, []).map(presentSong)
 }
 
 export function isFavorite(id: string): boolean {

@@ -1,3 +1,5 @@
+import { plainText } from './text'
+
 export type LyricLine = {
   time: number
   lineLyric: string
@@ -30,7 +32,7 @@ async function fetchLyric(musicId: string): Promise<LyricLine[]> {
   return list
     .map((line) => ({
       time: Number(line.time) || 0,
-      lineLyric: String(line.lineLyric ?? '').trim(),
+      lineLyric: plainText(line.lineLyric),
     }))
     .filter((line) => line.lineLyric)
     .sort((a, b) => a.time - b.time)

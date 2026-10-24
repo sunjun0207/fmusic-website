@@ -995,6 +995,11 @@ a {
   color: #8d3048;
 }
 
+.text-btn.is-on {
+  background: var(--teal);
+  color: #fff;
+}
+
 .search-hero,
 .prose-card,
 .fact-card,
@@ -1074,6 +1079,26 @@ a {
   border-radius: 6px;
   object-fit: cover;
   background: var(--sand);
+}
+
+.poster-slot {
+  position: relative;
+  overflow: hidden;
+  flex: none;
+}
+
+.poster-slot img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+}
+
+.poster-slot img.is-on {
+  opacity: 1;
 }
 
 .more-row {
@@ -1459,6 +1484,15 @@ body.lyric-open {
   background: #000;
 }
 
+.stage video {
+  object-fit: contain;
+  cursor: pointer;
+}
+
+.stage.is-clean video {
+  max-height: calc(100vh - 48px);
+}
+
 .audio-stage {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
@@ -1501,6 +1535,11 @@ body.lyric-open {
   background: #081416;
 }
 
+.lyric-bg-stack {
+  position: absolute;
+  inset: -48px;
+}
+
 .lyric-bg,
 .lyric-bg-mask {
   position: absolute;
@@ -1508,11 +1547,16 @@ body.lyric-open {
 }
 
 .lyric-bg {
-  inset: -48px;
   background-position: center;
   background-size: cover;
   filter: blur(56px) saturate(1.25);
   transform: scale(1.12);
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+.lyric-bg.is-on {
+  opacity: 1;
 }
 
 .lyric-bg-empty {
@@ -1615,16 +1659,54 @@ body.lyric-open {
 .lyric-disc-ring span {
   width: 68%;
   height: 68%;
-  margin: 16%;
   border-radius: 50%;
   object-fit: cover;
   display: block;
   background: #243438;
 }
 
+.lyric-disc-ring span {
+  margin: 16%;
+}
+
+.lyric-disc-ring img {
+  position: absolute;
+  left: 16%;
+  top: 16%;
+  margin: 0;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+.lyric-disc-ring img.is-on {
+  opacity: 1;
+}
+
+.poster-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.poster-dots button {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.poster-dots button.is-on {
+  background: #fff;
+  transform: scale(1.25);
+}
+
 .lyric-disc-ring::after {
   content: '';
   position: absolute;
+  z-index: 1;
   left: 50%;
   top: 50%;
   width: 16px;
@@ -1691,7 +1773,8 @@ body.lyric-open {
   flex: 1;
   min-height: 0;
   height: auto;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 0 18px 0 78px;
   touch-action: none;
   cursor: grab;
@@ -1727,7 +1810,34 @@ body.lyric-open {
   font-size: 16px;
   line-height: 1.55;
   text-align: left;
-  transition: color 0.2s ease, font-size 0.2s ease;
+  transition: color 0.45s ease, font-size 0.45s ease;
+}
+
+.lyric-words {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.lyric-sweep {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  color: transparent;
+  background-image: linear-gradient(90deg, #ffe7a8 0%, #7dfff0 62%, #ffffff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 72%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0%, #000 72%, transparent 100%);
+  transition: width 0.28s linear;
 }
 
 .lyric-line.near {
@@ -1744,7 +1854,7 @@ body.lyric-open {
 }
 
 .lyric-line.active {
-  color: #fff;
+  color: rgba(255, 255, 255, 0.62);
   font-size: 28px;
   font-weight: 700;
 }
@@ -1757,6 +1867,16 @@ body.lyric-open {
 .stage .lyric-view {
   height: 100%;
   min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyric-bg,
+  .lyric-disc-ring img,
+  .poster-slot img,
+  .lyric-sweep,
+  .lyric-line {
+    transition: none;
+  }
 }
 
 @media (max-width: 860px) {
@@ -1782,19 +1902,57 @@ body.lyric-open {
   color: rgba(255, 255, 255, 0.82);
 }
 
-.stage:fullscreen {
+.stage:fullscreen,
+.stage:-webkit-full-screen,
+.stage.is-fullscreen {
   width: 100%;
   height: 100%;
+  max-height: none;
   border-radius: 0;
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  background: #000;
 }
 
 .stage:fullscreen video,
-.stage:fullscreen .audio-stage {
-  flex: 1;
+.stage:-webkit-full-screen video,
+.stage.is-fullscreen video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   max-height: none;
-  min-height: 0;
+  object-fit: contain;
+}
+
+.stage:fullscreen header,
+.stage:-webkit-full-screen header,
+.stage.is-fullscreen header,
+.stage:fullscreen .stage-bar,
+.stage:-webkit-full-screen .stage-bar,
+.stage.is-fullscreen .stage-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+}
+
+.stage:fullscreen header,
+.stage:-webkit-full-screen header,
+.stage.is-fullscreen header {
+  top: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.72), transparent);
+}
+
+.stage:fullscreen .stage-bar,
+.stage:-webkit-full-screen .stage-bar,
+.stage.is-fullscreen .stage-bar {
+  bottom: 0;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.72), transparent);
+}
+
+.stage.is-clean header,
+.stage.is-clean .stage-bar {
+  display: none;
 }
 
 .result-block {
