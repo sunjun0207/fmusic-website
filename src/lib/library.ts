@@ -8,6 +8,8 @@ const KEYS = {
   playMode: 'fmusic_website_play_mode',
   posterQuality: 'fmusic_website_poster_quality',
   mvQuality: 'fmusic_website_mv_quality',
+  mvVolume: 'fmusic_website_mv_volume',
+  mvBrightness: 'fmusic_website_mv_brightness',
 } as const
 
 export type PictureQuality = 'sd' | 'hd' | 'fhd'
@@ -111,4 +113,26 @@ export function getMvQuality() {
 
 export function saveMvQuality(quality: PictureQuality) {
   localStorage.setItem(KEYS.mvQuality, quality)
+}
+
+function readLevel(key: string, fallback: number, min: number, max: number) {
+  const value = Number(localStorage.getItem(key))
+  if (!Number.isFinite(value)) return fallback
+  return Math.min(max, Math.max(min, Math.round(value)))
+}
+
+export function getMvVolume() {
+  return readLevel(KEYS.mvVolume, 100, 0, 100)
+}
+
+export function saveMvVolume(value: number) {
+  localStorage.setItem(KEYS.mvVolume, String(value))
+}
+
+export function getMvBrightness() {
+  return readLevel(KEYS.mvBrightness, 100, 40, 160)
+}
+
+export function saveMvBrightness(value: number) {
+  localStorage.setItem(KEYS.mvBrightness, String(value))
 }

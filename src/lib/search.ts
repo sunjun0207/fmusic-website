@@ -9,6 +9,8 @@ export type MusicItem = {
   image?: string
   images?: string[]
   hasMv: boolean
+  mvId?: string
+  mvFormats?: string[]
   mvPic?: string
 }
 
@@ -47,11 +49,22 @@ function mvPicture(raw: Record<string, unknown>) {
   return path ? `https://img4.kuwo.cn/wmvpic/${path}` : ''
 }
 
+function songMvId(raw: Record<string, unknown>) {
+  const matched = /^MV_(\d+)$/.exec(String(pick(raw, 'MKVRID') ?? ''))
+  return matched?.[1] && Number(matched[1]) > 0 ? matched[1] : ''
+}
+
+function songMvFormats(raw: Record<string, unknown>) {
+  const list = String(pick(raw, 'FORMATS') ?? '')
+    .split('|')
+    .map((item) => item.trim().toUpperCase())
+    .filter((item) => item.includes('MP4') || item.includes('MV'))
+  return list.length ? list : undefined
+}
+
 function songHasMv(raw: Record<string, unknown>) {
   if (String(pick(raw, 'MVFLAG') ?? '') === '1') return true
-  const rid = String(pick(raw, 'MKVRID') ?? '')
-  const match = /^MV_(\d+)$/.exec(rid)
-  return Boolean(match && Number(match[1]) > 0)
+  return Boolean(songMvId(raw))
 }
 
 function mapSearchItem(raw: Record<string, unknown>): MusicItem | null {
@@ -62,6 +75,8 @@ function mapSearchItem(raw: Record<string, unknown>): MusicItem | null {
   const album = clean(pick(raw, 'ALBUM', 'album'))
   const image = String(pick(raw, 'web_albumpic_short', 'albumPic', 'pic') ?? '')
   const mvPic = mvPicture(raw)
+  const mvId = songMvId(raw)
+  const mvFormats = songMvFormats(raw)
   const images = collectImages(image, String(pick(raw, 'web_artistpic_short') ?? ''), mvPic)
   return {
     id,
@@ -72,6 +87,8 @@ function mapSearchItem(raw: Record<string, unknown>): MusicItem | null {
     image,
     images,
     hasMv: songHasMv(raw),
+    mvId: mvId || undefined,
+    mvFormats,
     mvPic: mvPic || undefined,
   }
 }

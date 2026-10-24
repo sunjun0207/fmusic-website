@@ -48,7 +48,7 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
     for (const song of songs) {
       if (!song.hasMv || probedMv.current.has(song.id)) continue
       probedMv.current.add(song.id)
-      void getMediaUrl(song.id, 'mv').catch((reason: unknown) => {
+      void getMediaUrl(song.id, 'mv', 'fhd', song.mvId ?? '').catch((reason: unknown) => {
         if (reason instanceof Error && reason.message.includes('没有')) rememberNoMv(song.id)
       })
     }

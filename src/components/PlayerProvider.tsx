@@ -4,13 +4,17 @@ import { LyricView } from './LyricView'
 import {
   addRecentPlay,
   clearFavorites,
+  getMvBrightness,
   getMvQuality,
+  getMvVolume,
   getPlayMode,
   getPosterQuality,
   getRecentPlays,
   isFavorite,
   removeFavorite,
+  saveMvBrightness,
   saveMvQuality,
+  saveMvVolume,
   savePlayMode,
   savePosterQuality,
   toggleFavorite,
@@ -19,7 +23,7 @@ import {
 import { getLyric, prefetchLyric, type LyricLine } from '../lib/lyric'
 import { nextPlayMode, PLAY_MODE_LABEL, resolveAdvance, type AdvanceDirection, type PlayMode } from '../lib/playback'
 import { mediaFilename, saveMedia } from '../lib/saveMedia'
-import { getMediaUrl, prefetchMedia } from '../lib/play'
+import { getMediaUrl, getPlayableMvQualities, listedMvQualities, prefetchMedia, sameMediaFile } from '../lib/play'
 import { coverUrl, findPlayable, isSongWithoutMv, POSTER_SIZE, rememberNoMv, songPosters, subscribeNoMv, type MusicItem } from '../lib/search'
 
 type Kind = 'audio' | 'mv'
@@ -125,16 +129,28 @@ const QUALITY_OPTIONS: { id: PictureQuality; label: string }[] = [
   { id: 'fhd', label: '超清' },
 ]
 
+function nearestQuality(current: PictureQuality, choices: PictureQuality[]) {
+  const order: PictureQuality[] = ['sd', 'hd', 'fhd']
+  const index = order.indexOf(current)
+  return [...choices].sort((left, right) => {
+    const leftDistance = order.indexOf(left) <= index ? index - order.indexOf(left) : 10 + order.indexOf(left)
+    const rightDistance = order.indexOf(right) <= index ? index - order.indexOf(right) : 10 + order.indexOf(right)
+    return leftDistance - rightDistance
+  })[0] ?? current
+}
+
 function QualitySwitch({
   label,
   value,
   onChange,
   toolbar = false,
+  disabledValues = [],
 }: {
   label: string
   value: PictureQuality
   onChange: (value: PictureQuality) => void
   toolbar?: boolean
+  disabledValues?: PictureQuality[]
 }) {
   return (
     <label className={toolbar ? 'stage-tool quality-switch' : 'quality-switch'}>
@@ -145,12 +161,54 @@ function QualitySwitch({
         onChange={(event) => onChange(event.target.value as PictureQuality)}
       >
         {QUALITY_OPTIONS.map((item) => (
-          <option key={item.id} value={item.id}>
+          <option key={item.id} value={item.id} disabled={disabledValues.includes(item.id)}>
             {item.label}
           </option>
         ))}
       </select>
     </label>
+  )
+}
+
+function LevelControl({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  step: number
+  onChange: (value: number) => void
+}) {
+  const nudge = (delta: number) => onChange(Math.min(max, Math.max(min, value + delta)))
+  return (
+    <div className="level-control">
+      <span className="level-control-name">{label}</span>
+      <button type="button" aria-label={`${label}减小`} disabled={value <= min} onClick={() => nudge(-step)}>
+        −
+      </button>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={1}
+        value={value}
+        aria-label={label}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <button type="button" aria-label={`${label}增大`} disabled={value >= max} onClick={() => nudge(step)}>
+        +
+      </button>
+      <span className="level-control-value">{value}%</span>
+    </div>
   )
 }
 
@@ -222,6 +280,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [brokenPosters, setBrokenPosters] = useState<string[]>([])
   const [posterQuality, setPosterQuality] = useState<PictureQuality>(getPosterQuality)
   const [mvQuality, setMvQuality] = useState<PictureQuality>(getMvQuality)
+  const [mvQualityOptions, setMvQualityOptions] = useState<PictureQuality[] | null>(null)
+  const [mvVolume, setMvVolume] = useState(getMvVolume)
+  const [mvBrightness, setMvBrightness] = useState(getMvBrightness)
   const [queued, setQueued] = useState<MusicItem | null>(null)
   const [queue, setQueue] = useState<MusicItem[]>([])
   const [playMode, setPlayMode] = useState<PlayMode>(() => getPlayMode())
@@ -579,7 +640,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     }
     try {
-      const url = await getMediaUrl(song.id, kind, mvQualityRef.current)
+      const url = await getMediaUrl(song.id, kind, mvQualityRef.current, song.mvId ?? '')
       if (ticket !== requestRef.current) return
       if (kind === 'audio') {
         audioTimeRef.current = 0
@@ -706,8 +767,51 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const warm = (song: MusicItem, kind: Kind) => {
     if (!song.id) return
-    prefetchMedia(song.id, kind, mvQualityRef.current)
+    prefetchMedia(song.id, kind, mvQualityRef.current, song.mvId ?? '')
     if (kind === 'audio') prefetchLyric(song.id)
+  }
+
+  useEffect(() => {
+    if (stage !== 'mv' || !mv?.song.id) {
+      setMvQualityOptions(null)
+      return
+    }
+    const song = mv.song
+    const catalog = listedMvQualities(song.mvFormats)
+    if (catalog) setMvQualityOptions(catalog)
+    let cancel = false
+    getPlayableMvQualities(song.id, song.mvId ?? '', song.mvFormats)
+      .then((list) => {
+        if (cancel) return
+        setMvQualityOptions(list)
+        if (list.includes(mvQualityRef.current)) return
+        const next = nearestQuality(mvQualityRef.current, list)
+        mvQualityRef.current = next
+        setMvQuality(next)
+        saveMvQuality(next)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancel = true
+    }
+  }, [stage, mv])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    video.volume = mvVolume / 100
+  }, [mvVolume, mv, stage])
+
+  const chooseMvVolume = (value: number) => {
+    const next = Math.min(100, Math.max(0, Math.round(value)))
+    setMvVolume(next)
+    saveMvVolume(next)
+  }
+
+  const chooseMvBrightness = (value: number) => {
+    const next = Math.min(160, Math.max(40, Math.round(value)))
+    setMvBrightness(next)
+    saveMvBrightness(next)
   }
 
   const choosePosterQuality = (quality: PictureQuality) => {
@@ -716,16 +820,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }
 
   const chooseMvQuality = (quality: PictureQuality) => {
+    if (mvQualityOptions && !mvQualityOptions.includes(quality)) return
     saveMvQuality(quality)
     mvQualityRef.current = quality
     setMvQuality(quality)
     const playing = mv
     if (!playing?.song.id) return
+    const previous = playing.url
     videoTimeRef.current = videoRef.current?.currentTime ?? 0
     setPending(true)
-    getMediaUrl(playing.song.id, 'mv', quality)
+    setError('')
+    getMediaUrl(playing.song.id, 'mv', quality, playing.song.mvId ?? '')
       .then((url) => {
         setMv({ song: playing.song, url })
+        if (sameMediaFile(previous, url)) setError('这次换清晰度后，拿到的还是同一个视频文件。')
       })
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : 'MV 地址获取失败')
@@ -770,7 +878,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setError('')
     setDownloading(true)
     try {
-      await saveMedia(item.url, mediaFilename(item.song.title, item.song.artist, kind))
+      await saveMedia(item.url, mediaFilename(item.song.title, item.song.artist, kind, kind === 'mv' ? (QUALITY_OPTIONS.find((option) => option.id === mvQualityRef.current)?.label ?? '') : ''))
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : '下载失败')
     } finally {
@@ -1074,7 +1182,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                   <span className="stage-tool-label">{downloading ? '下载中' : '下载'}</span>
                 </button>
                 {stage === 'mv' ? (
-                  <QualitySwitch toolbar label="清晰度" value={mvQuality} onChange={chooseMvQuality} />
+                  <QualitySwitch
+                    toolbar
+                    label="清晰度"
+                    value={mvQualityOptions && !mvQualityOptions.includes(mvQuality) ? nearestQuality(mvQuality, mvQualityOptions) : mvQuality}
+                    disabledValues={mvQualityOptions ? QUALITY_OPTIONS.filter((item) => !mvQualityOptions.includes(item.id)).map((item) => item.id) : []}
+                    onChange={chooseMvQuality}
+                  />
                 ) : null}
                 <button
                   type="button"
@@ -1099,12 +1213,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                   <CloseIcon />
                 </button>
               </div>
+              {error ? <p className="stage-note">{error}</p> : null}
             </header>
             {stage === 'mv' && mv ? (
               <video
                 ref={videoRef}
                 src={mv.url}
                 poster={coverUrl(mv.song.mvPic) || undefined}
+                style={mvBrightness === 100 ? undefined : { filter: `brightness(${mvBrightness / 100})` }}
                 playsInline
                 onClick={() => setStageClean((value) => !value)}
                 onPlay={() => bind(videoRef.current)}
@@ -1114,6 +1230,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                   const mark = videoTimeRef.current
                   if (mark > 0.3) event.currentTarget.currentTime = mark
                   videoTimeRef.current = 0
+                  event.currentTarget.volume = mvVolume / 100
                   bind(event.currentTarget)
                   if (mark > 0.3) void event.currentTarget.play().catch(() => undefined)
                 }}
@@ -1127,18 +1244,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               </div>
             )}
             <div className="stage-bar">
-              <button
-                type="button"
-                className="icon-btn icon-btn-light play-toggle"
-                onClick={toggle}
-                aria-label={paused ? '播放' : '暂停'}
-              >
-                <PlayPauseIcon paused={paused} />
-              </button>
-              <SeekBar current={current} duration={duration} onScrub={scrub} onScrubEnd={scrubEnd} />
-              <span className="time">
-                {clock(current)} / {clock(duration)}
-              </span>
+              <div className="stage-transport">
+                <button
+                  type="button"
+                  className="icon-btn icon-btn-light play-toggle"
+                  onClick={toggle}
+                  aria-label={paused ? '播放' : '暂停'}
+                >
+                  <PlayPauseIcon paused={paused} />
+                </button>
+                <SeekBar current={current} duration={duration} onScrub={scrub} onScrubEnd={scrubEnd} />
+                <span className="time">
+                  {clock(current)} / {clock(duration)}
+                </span>
+              </div>
+              {stage === 'mv' ? (
+                <div className="stage-levels">
+                  <LevelControl label="音量" value={mvVolume} min={0} max={100} step={5} onChange={chooseMvVolume} />
+                  <LevelControl label="亮度" value={mvBrightness} min={40} max={160} step={5} onChange={chooseMvBrightness} />
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

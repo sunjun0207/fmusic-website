@@ -9,10 +9,11 @@ function cleanPart(raw: string) {
     .slice(0, 60)
 }
 
-export function mediaFilename(title: string, artist: string, kind: 'audio' | 'mv') {
+export function mediaFilename(title: string, artist: string, kind: 'audio' | 'mv', quality = '') {
   const name = cleanPart(title) || '未知歌曲'
   const singer = cleanPart(artist) || '未知歌手'
-  return `${name}-${singer}.${kind === 'mv' ? 'mp4' : 'mp3'}`
+  const mark = quality ? `-${cleanPart(quality)}` : ''
+  return `${name}-${singer}${mark}.${kind === 'mv' ? 'mp4' : 'mp3'}`
 }
 
 function isMedia(bytes: Uint8Array, contentType: string) {

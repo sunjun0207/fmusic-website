@@ -54,7 +54,7 @@ location /proxy/kw-cdn/ {
     proxy_read_timeout 300s;
 }
 
-location ~* ^/proxy/kw-audio/(?<audio_host>kw-[a-z0-9-]+\.kuwo\.cn|mp4dl\.cdn\.kuwo\.cn)/ {
+location ~* ^/proxy/kw-audio/(?<audio_host>(?!.*\.\.)[a-z0-9.-]+\.kuwo\.cn)/ {
     resolver 223.5.5.5 119.29.29.29 valid=300s ipv6=off;
     resolver_timeout 5s;
     set $audio_backend $audio_host;
@@ -67,6 +67,8 @@ location ~* ^/proxy/kw-audio/(?<audio_host>kw-[a-z0-9-]+\.kuwo\.cn|mp4dl\.cdn\.k
     proxy_set_header Referer "";
     proxy_set_header Accept-Encoding "";
     proxy_hide_header Content-Disposition;
+    proxy_redirect ~*^https?://([a-z0-9.-]+\.kuwo\.cn)(/.*)$ /proxy/kw-audio/$1$2;
+    proxy_connect_timeout 5s;
     proxy_buffering off;
     proxy_request_buffering off;
     proxy_read_timeout 300s;

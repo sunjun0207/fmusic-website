@@ -1,40 +1,65 @@
 import http from 'node:http'
+import https from 'node:https'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from 'vite'
 import react from '@vitejs/plugin-react'
 
-const KUWO_AUDIO_HOST = /^(?:kw-[a-z0-9-]+|mp4dl\.cdn)\.kuwo\.cn$/i
+const KUWO_AUDIO_HOST = /^(?:[a-z0-9-]+\.)+kuwo\.cn$/i
 
-function kuwoAudioProxy(req: IncomingMessage, res: ServerResponse, next: () => void) {
-  const raw = req.url || ''
-  const matched = raw.match(/^\/proxy\/kw-audio\/((?:kw-[a-z0-9-]+|mp4dl\.cdn)\.kuwo\.cn)(\/.*)$/i)
-  if (!matched || !KUWO_AUDIO_HOST.test(matched[1])) {
-    next()
+function isKuwoAudioHost(host: string) {
+  return KUWO_AUDIO_HOST.test(host) && !host.includes('..')
+}
+
+function proxyKuwoAudio(req: IncomingMessage, res: ServerResponse, target: URL, hops: number) {
+  if (!isKuwoAudioHost(target.hostname) || hops > 3) {
+    if (!res.headersSent) res.writeHead(502)
+    res.end()
     return
   }
-  const host = matched[1]
-  const headers: http.OutgoingHttpHeaders = { ...req.headers, host }
+  const headers: http.OutgoingHttpHeaders = { ...req.headers, host: target.hostname }
   delete headers.cookie
   delete headers.origin
   delete headers.referer
-  const upstream = http.request(
+  const lib = target.protocol === 'https:' ? https : http
+  const upstream = lib.request(
     {
-      hostname: host,
-      port: 80,
+      hostname: target.hostname,
+      port: target.port || (target.protocol === 'https:' ? 443 : 80),
       method: req.method,
-      path: matched[2],
+      path: `${target.pathname}${target.search}`,
       headers,
+      timeout: 8000,
     },
     (incoming) => {
-      res.writeHead(incoming.statusCode || 502, incoming.headers)
+      const status = incoming.statusCode || 502
+      const location = incoming.headers.location
+      if (location && status >= 300 && status < 400 && hops < 3 && (req.method === 'GET' || req.method === 'HEAD')) {
+        incoming.resume()
+        const next = new URL(location, target)
+        proxyKuwoAudio(req, res, next, hops + 1)
+        return
+      }
+      res.writeHead(status, incoming.headers)
       incoming.pipe(res)
     },
   )
+  upstream.on('timeout', () => upstream.destroy())
   upstream.on('error', () => {
     if (!res.headersSent) res.writeHead(502)
     res.end()
   })
-  req.pipe(upstream)
+  if (hops === 0) req.pipe(upstream)
+  else upstream.end()
+}
+
+function kuwoAudioProxy(req: IncomingMessage, res: ServerResponse, next: () => void) {
+  const raw = req.url || ''
+  const matched = raw.match(/^\/proxy\/kw-audio\/([a-z0-9.-]+\.kuwo\.cn)(\/.*)$/i)
+  if (!matched || !isKuwoAudioHost(matched[1])) {
+    next()
+    return
+  }
+  proxyKuwoAudio(req, res, new URL(`http://${matched[1]}${matched[2]}`), 0)
 }
 
 function kuwoAudioProxyPlugin(): Plugin {
