@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { EmptyState } from '../components/EmptyState'
 import { usePlayer } from '../components/PlayerProvider'
 import { hotSearches } from '../data/catalog'
+import { addSearchHistory, clearSearchHistory, getSearchHistory, removeSearchHistory } from '../lib/library'
 import { searchHash } from '../lib/route'
 import { getMediaUrl } from '../lib/play'
 import {
@@ -17,6 +18,30 @@ import {
 } from '../lib/search'
 
 const PAGE_SIZE = 20
+const FOCUS_KEY = 'fmusic_website_search_focus'
+
+function saveSearchFocus(query: string, id: string) {
+  sessionStorage.setItem(FOCUS_KEY, JSON.stringify({ query, id }))
+}
+
+function searchFocusId(query: string) {
+  try {
+    const data = JSON.parse(sessionStorage.getItem(FOCUS_KEY) || '') as { query?: string; id?: string }
+    return data.query === query ? String(data.id || '') : ''
+  } catch {
+    return ''
+  }
+}
+
+function revealSearchRow(id: string) {
+  const row = document.getElementById(`search-song-${id}`)
+  if (!row) return
+  const topBar = document.querySelector('.sticky-top')?.getBoundingClientRect().height ?? 0
+  const dock = document.querySelector('.player-stack')?.getBoundingClientRect().height ?? 0
+  const rect = row.getBoundingClientRect()
+  const visible = rect.top >= topBar + 8 && rect.bottom <= window.innerHeight - dock - 8
+  if (!visible) row.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
 
 function pagerPages(current: number, totalPages: number) {
   const wanted = new Set<number>([1, totalPages])
@@ -31,6 +56,7 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [suggests, setSuggests] = useState<string[]>([])
+  const [history, setHistory] = useState<string[]>(() => getSearchHistory())
   const [focused, setFocused] = useState(false)
   const blurTimer = useRef(0)
   const probedMv = useRef(new Set<string>())
@@ -55,6 +81,13 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
   }, [songs])
 
   useEffect(() => setInput(q), [q])
+
+  useEffect(() => {
+    const keyword = q.trim()
+    if (!keyword) return
+    addSearchHistory(keyword)
+    setHistory(getSearchHistory())
+  }, [q])
 
   useEffect(() => {
     const keyword = input.trim()
@@ -117,9 +150,22 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
 
   const go = (keyword: string) => {
     const next = keyword.trim()
+    player.dismissLyric()
     window.location.hash = next ? searchHash(next) : '#/search'
     setSuggests([])
   }
+
+  const playSong = (song: MusicItem, kind: 'audio' | 'mv' = 'audio') => {
+    saveSearchFocus(q, song.id)
+    player.play(song, kind, kind === 'audio' ? songs : undefined)
+  }
+
+  useEffect(() => {
+    const id = songs.some((song) => song.id === player.playingId) ? player.playingId : searchFocusId(q)
+    if (!id || !songs.some((song) => song.id === id)) return
+    const frame = window.requestAnimationFrame(() => revealSearchRow(id))
+    return () => window.cancelAnimationFrame(frame)
+  }, [player.playingId, songs, q, page])
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const pages = pagerPages(page, totalPages)
@@ -142,6 +188,7 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
               onChange={(event) => setInput(event.target.value)}
               onFocus={() => {
                 window.clearTimeout(blurTimer.current)
+                player.dismissLyric()
                 setFocused(true)
               }}
               onBlur={() => {
@@ -168,6 +215,46 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
             搜索
           </button>
         </form>
+        <div className="search-history">
+          <div className="search-history-head">
+            <span>搜索历史</span>
+            {history.length ? (
+              <button
+                type="button"
+                onClick={() => {
+                  clearSearchHistory()
+                  setHistory([])
+                }}
+              >
+                清空
+              </button>
+            ) : null}
+          </div>
+          {history.length ? (
+            <div className="chips">
+              {history.map((item) => (
+                <span key={item} className="history-chip">
+                  <a className="chip" href={searchHash(item)}>
+                    {item}
+                  </a>
+                  <button
+                    type="button"
+                    aria-label={`删除 ${item}`}
+                    onClick={() => {
+                      removeSearchHistory(item)
+                      setHistory(getSearchHistory())
+                    }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="meta">搜过的词会留在这里。</p>
+          )}
+        </div>
+        <p className="search-hot-label">热门搜索</p>
         <div className="chips">
           {hotSearches.map((item) => (
             <a key={item} className="chip" href={searchHash(item)}>
@@ -213,10 +300,11 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
                   return (
                     <tr
                       key={song.id}
+                      id={`search-song-${song.id}`}
                       className={playing ? 'is-playing is-clickable' : 'is-clickable'}
                       onClick={(event) => {
                         if ((event.target as HTMLElement).closest('button, a')) return
-                        player.play(song, 'audio', songs)
+                        playSong(song)
                       }}
                       onPointerDown={(event) => {
                         if ((event.target as HTMLElement).closest('button, a')) return
@@ -225,7 +313,7 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault()
-                          player.play(song, 'audio', songs)
+                          playSong(song)
                         }
                       }}
                       tabIndex={0}
@@ -256,7 +344,7 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
                             onPointerDown={() => player.warm(song, 'audio')}
                             onClick={(event) => {
                               event.stopPropagation()
-                              player.play(song, 'audio', songs)
+                              playSong(song)
                             }}
                           >
                             播放歌曲
@@ -272,7 +360,7 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
                               }}
                               onClick={(event) => {
                                 event.stopPropagation()
-                                player.play(song, 'mv')
+                                playSong(song, 'mv')
                               }}
                             >
                               播放MV

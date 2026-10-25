@@ -8,9 +8,12 @@ const KEYS = {
   playMode: 'fmusic_website_play_mode',
   posterQuality: 'fmusic_website_poster_quality',
   mvQuality: 'fmusic_website_mv_quality',
+  songVolume: 'fmusic_website_song_volume',
+  songBrightness: 'fmusic_website_song_brightness',
   mvVolume: 'fmusic_website_mv_volume',
   mvBrightness: 'fmusic_website_mv_brightness',
   danmaku: 'fmusic_website_danmaku',
+  searchHistory: 'fmusic_website_search_history',
 } as const
 
 export type PictureQuality = 'sd' | 'hd' | 'fhd'
@@ -45,6 +48,32 @@ function presentSong(item: MusicItem): MusicItem {
     artist: plainText(item.artist),
     album: plainText(item.album),
   }
+}
+
+export function getSearchHistory() {
+  return readJson<string[]>(KEYS.searchHistory, [])
+    .map((item) => plainText(item).trim())
+    .filter(Boolean)
+}
+
+export function addSearchHistory(keyword: string) {
+  const text = plainText(keyword).trim()
+  if (!text) return
+  const list = getSearchHistory().filter((item) => item !== text)
+  list.unshift(text)
+  writeJson(KEYS.searchHistory, list.slice(0, 12))
+}
+
+export function removeSearchHistory(keyword: string) {
+  const text = plainText(keyword).trim()
+  writeJson(
+    KEYS.searchHistory,
+    getSearchHistory().filter((item) => item !== text),
+  )
+}
+
+export function clearSearchHistory() {
+  writeJson(KEYS.searchHistory, [])
 }
 
 export function getRecentPlays(): MusicItem[] {
@@ -122,6 +151,22 @@ function readLevel(key: string, fallback: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(value)))
 }
 
+export function getSongVolume() {
+  return readLevel(KEYS.songVolume, 100, 0, 100)
+}
+
+export function saveSongVolume(value: number) {
+  localStorage.setItem(KEYS.songVolume, String(value))
+}
+
+export function getSongBrightness() {
+  return readLevel(KEYS.songBrightness, 160, 40, 160)
+}
+
+export function saveSongBrightness(value: number) {
+  localStorage.setItem(KEYS.songBrightness, String(value))
+}
+
 export function getMvVolume() {
   return readLevel(KEYS.mvVolume, 100, 0, 100)
 }
@@ -131,7 +176,7 @@ export function saveMvVolume(value: number) {
 }
 
 export function getMvBrightness() {
-  return readLevel(KEYS.mvBrightness, 100, 40, 160)
+  return readLevel(KEYS.mvBrightness, 160, 40, 160)
 }
 
 export function saveMvBrightness(value: number) {

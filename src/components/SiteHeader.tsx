@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { usePlayer } from './PlayerProvider'
+import { clearSearchHistory, getSearchHistory } from '../lib/library'
 import { searchHash, type Route } from '../lib/route'
 import { searchKey } from '../lib/search'
 
@@ -18,8 +20,10 @@ export function SiteHeader({ route }: { route: Route }) {
   const [open, setOpen] = useState(false)
   const [keyword, setKeyword] = useState(route.name === 'search' ? route.q : '')
   const [suggests, setSuggests] = useState<string[]>([])
+  const [history, setHistory] = useState<string[]>([])
   const [suggestOpen, setSuggestOpen] = useState(false)
   const slotRef = useRef<HTMLDivElement>(null)
+  const player = usePlayer()
 
   useEffect(() => {
     const close = () => setOpen(false)
@@ -31,6 +35,10 @@ export function SiteHeader({ route }: { route: Route }) {
     setKeyword(route.name === 'search' ? route.q : '')
     setSuggestOpen(false)
   }, [route.key])
+
+  useEffect(() => {
+    if (suggestOpen) setHistory(getSearchHistory())
+  }, [suggestOpen, route.key])
 
   useEffect(() => {
     const q = keyword.trim()
@@ -57,6 +65,7 @@ export function SiteHeader({ route }: { route: Route }) {
   const go = (value: string) => {
     const q = value.trim()
     if (!q) return
+    player.dismissLyric()
     setKeyword(q)
     setSuggestOpen(false)
     window.location.hash = searchHash(q)
@@ -105,17 +114,34 @@ export function SiteHeader({ route }: { route: Route }) {
                 setKeyword(event.target.value)
                 setSuggestOpen(true)
               }}
-              onFocus={() => setSuggestOpen(true)}
+              onFocus={() => {
+                player.dismissLyric()
+                setSuggestOpen(true)
+              }}
               placeholder="搜索歌曲、歌手、歌单"
               aria-label="搜索"
               aria-autocomplete="list"
-              aria-expanded={suggestOpen && suggests.length > 0}
+              aria-expanded={suggestOpen && (keyword.trim() ? suggests.length > 0 : history.length > 0)}
             />
             <button type="submit">搜索</button>
           </form>
-          {suggestOpen && suggests.length ? (
+          {suggestOpen && (keyword.trim() ? suggests.length > 0 : history.length > 0) ? (
             <ul className="suggest-list header-suggest" role="listbox">
-              {suggests.map((item) => (
+              {keyword.trim() ? null : (
+                <li className="suggest-label">
+                  <span>搜索历史</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearSearchHistory()
+                      setHistory([])
+                    }}
+                  >
+                    清空
+                  </button>
+                </li>
+              )}
+              {(keyword.trim() ? suggests : history).map((item) => (
                 <li key={item}>
                   <button type="button" role="option" onClick={() => go(item)}>
                     {item}

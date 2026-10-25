@@ -12,6 +12,8 @@ import {
   getMvQuality,
   getMvVolume,
   getPlayMode,
+  getSongBrightness,
+  getSongVolume,
   getPosterQuality,
   getRecentPlays,
   isFavorite,
@@ -21,6 +23,8 @@ import {
   saveMvQuality,
   saveMvVolume,
   savePlayMode,
+  saveSongBrightness,
+  saveSongVolume,
   savePosterQuality,
   toggleFavorite,
   type PictureQuality,
@@ -46,6 +50,7 @@ type PlayerApi = {
   error: string
   playingId: string
   libraryVersion: number
+  dismissLyric: () => void
 }
 
 const PlayerContext = createContext<PlayerApi | null>(null)
@@ -205,28 +210,50 @@ function DanmakuSwitch({ on, onClick }: { on: boolean; onClick: () => void }) {
   )
 }
 
-function LevelControl({
+function VolumeIcon({ muted }: { muted: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M4 10v4h3l4 3V7L7 10H4z" fill="currentColor" stroke="none" />
+      {muted ? (
+        <path d="M16 10l4 4M20 10l-4 4" strokeLinecap="round" />
+      ) : (
+        <>
+          <path d="M16 9.5a3.5 3.5 0 0 1 0 5" strokeLinecap="round" />
+          <path d="M18.5 7.5a6.5 6.5 0 0 1 0 9" strokeLinecap="round" />
+        </>
+      )}
+    </svg>
+  )
+}
+
+function BrightnessIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none" />
+      <path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M18 6l-1.6 1.6M7.6 16.4 6 18" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function DragMeter({
   label,
   value,
   min,
   max,
-  step,
+  icon,
   onChange,
 }: {
   label: string
   value: number
   min: number
   max: number
-  step: number
+  icon: ReactNode
   onChange: (value: number) => void
 }) {
-  const nudge = (delta: number) => onChange(Math.min(max, Math.max(min, value + delta)))
+  const ratio = max > min ? ((value - min) / (max - min)) * 100 : 0
   return (
-    <div className="level-control">
-      <span className="level-control-name">{label}</span>
-      <button type="button" aria-label={`${label}减小`} disabled={value <= min} onClick={() => nudge(-step)}>
-        −
-      </button>
+    <label className="drag-meter">
+      {icon}
       <input
         type="range"
         min={min}
@@ -237,13 +264,10 @@ function LevelControl({
         aria-valuemin={min}
         aria-valuemax={max}
         aria-valuenow={value}
+        style={{ ['--meter' as string]: `${ratio}%` }}
         onChange={(event) => onChange(Number(event.target.value))}
       />
-      <button type="button" aria-label={`${label}增大`} disabled={value >= max} onClick={() => nudge(step)}>
-        +
-      </button>
-      <span className="level-control-value">{value}%</span>
-    </div>
+    </label>
   )
 }
 
@@ -316,8 +340,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [posterQuality, setPosterQuality] = useState<PictureQuality>(getPosterQuality)
   const [mvQuality, setMvQuality] = useState<PictureQuality>(getMvQuality)
   const [mvQualityOptions, setMvQualityOptions] = useState<PictureQuality[] | null>(null)
+  const [songVolume, setSongVolume] = useState(getSongVolume)
+  const [songBrightness, setSongBrightness] = useState(getSongBrightness)
   const [mvVolume, setMvVolume] = useState(getMvVolume)
   const [mvBrightness, setMvBrightness] = useState(getMvBrightness)
+  const songVolumeRef = useRef(songVolume)
+  const mvVolumeRef = useRef(mvVolume)
+  songVolumeRef.current = songVolume
+  mvVolumeRef.current = mvVolume
   const [danmakuOn, setDanmakuOn] = useState(getDanmakuEnabled)
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [commentTotal, setCommentTotal] = useState<number | null>(null)
@@ -336,6 +366,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const silenceAudioRef = useRef(false)
   const audioTimeRef = useRef(0)
   const stageRef = useRef<HTMLDivElement>(null)
+  const chromeTimer = useRef(0)
   const stackRef = useRef<HTMLDivElement>(null)
   const scrubbingRef = useRef(false)
   const requestRef = useRef(0)
@@ -495,6 +526,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setLyricOpen(open)
   }
 
+  const dismissLyric = () => {
+    showLyricRef.current = false
+    setLyricOpen(false)
+  }
+
   const slidePoster = (dir: number) => {
     if (posterCount < 2) return
     setPosterIndex((value) => (value + dir + posterCount) % posterCount)
@@ -612,7 +648,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return
     }
     el.muted = false
-    el.volume = 1
+    el.volume = songVolumeRef.current / 100
     if (el.getAttribute('src') !== audio.url) el.src = audio.url
     let cancel = false
     void el.play().then(() => {
@@ -687,6 +723,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setStageClean(false)
   }, [stage, fullscreen])
+
+  const armChromeHide = () => {
+    window.clearTimeout(chromeTimer.current)
+    chromeTimer.current = window.setTimeout(() => setStageClean(true), 3000)
+  }
+
+  useEffect(() => {
+    if (stage !== 'mv' || stageClean) {
+      window.clearTimeout(chromeTimer.current)
+      return
+    }
+    armChromeHide()
+    return () => window.clearTimeout(chromeTimer.current)
+  }, [stage, stageClean, fullscreen])
 
   const bind = (el: HTMLMediaElement | null) => {
     if (!el) return
@@ -926,10 +976,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [stage, mv])
 
   useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-    video.volume = mvVolume / 100
+    const song = audioRef.current
+    if (song && !silenceAudioRef.current && !song.muted) song.volume = songVolume / 100
+  }, [songVolume, audio])
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.volume = mvVolume / 100
   }, [mvVolume, mv, stage])
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--song-brightness', String(songBrightness / 100))
+  }, [songBrightness])
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--mv-brightness', String(mvBrightness / 100))
+  }, [mvBrightness])
+
+  const chooseSongVolume = (value: number) => {
+    const next = Math.min(100, Math.max(0, Math.round(value)))
+    setSongVolume(next)
+    saveSongVolume(next)
+  }
+
+  const chooseSongBrightness = (value: number) => {
+    const next = Math.min(160, Math.max(40, Math.round(value)))
+    setSongBrightness(next)
+    saveSongBrightness(next)
+  }
 
   const chooseMvVolume = (value: number) => {
     const next = Math.min(100, Math.max(0, Math.round(value)))
@@ -1037,6 +1110,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const toggleFavRef = useRef(toggleSongFavorite)
   const removeFavRef = useRef(removeSongFavorite)
   const clearFavRef = useRef(clearSongFavorites)
+  const dismissLyricRef = useRef(dismissLyric)
   playRef.current = play
   playNamedRef.current = playNamed
   warmRef.current = warm
@@ -1044,6 +1118,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   toggleFavRef.current = toggleSongFavorite
   removeFavRef.current = removeSongFavorite
   clearFavRef.current = clearSongFavorites
+  dismissLyricRef.current = dismissLyric
   const value = useMemo<PlayerApi>(
     () => ({
       play: (song, kind, nextQueue) => playRef.current(song, kind, nextQueue),
@@ -1053,6 +1128,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleFavorite: (song) => toggleFavRef.current(song),
       removeFavorite: (id) => removeFavRef.current(id),
       clearFavorites: () => clearFavRef.current(),
+      dismissLyric: () => dismissLyricRef.current(),
       pending,
       error,
       playingId,
@@ -1085,6 +1161,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             const mark = audioTimeRef.current
             if (mark > 0.3 && el.currentTime < 0.3) el.currentTime = mark
             audioTimeRef.current = 0
+            el.volume = songVolumeRef.current / 100
             if (!silenceAudioRef.current) bind(el)
           }}
           onEnded={() => {
@@ -1182,6 +1259,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                 <span className="mv-none">暂无MV</span>
               )
             ) : null}
+            <DragMeter label="歌曲音量" value={songVolume} min={0} max={100} icon={<VolumeIcon muted={songVolume === 0} />} onChange={chooseSongVolume} />
+            <DragMeter label="歌曲亮度" value={songBrightness} min={40} max={160} icon={<BrightnessIcon />} onChange={chooseSongBrightness} />
           </div>
           {error ? <p className="play-error">{error}</p> : null}
           {pending ? <p className="meta">正在获取播放地址…</p> : null}
@@ -1306,7 +1385,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             className={`stage stage-${stage}${fullscreen ? ' is-fullscreen' : ''}${stageClean ? ' is-clean' : ''}`}
             ref={stageRef}
           >
-            <header>
+            <header onPointerDown={armChromeHide} onPointerMove={armChromeHide}>
               <div>
                 <strong>{active.song.title}</strong>
                 <span>
@@ -1366,7 +1445,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                   ref={videoRef}
                   src={mv.url}
                   poster={coverUrl(mv.song.mvPic) || undefined}
-                  style={mvBrightness === 100 ? undefined : { filter: `brightness(${mvBrightness / 100})` }}
                   playsInline
                   onClick={() => setStageClean((value) => !value)}
                   onPlay={() => bind(videoRef.current)}
@@ -1376,7 +1454,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                     const mark = videoTimeRef.current
                     if (mark > 0.3) event.currentTarget.currentTime = mark
                     videoTimeRef.current = 0
-                    event.currentTarget.volume = mvVolume / 100
+                    event.currentTarget.volume = mvVolumeRef.current / 100
                     bind(event.currentTarget)
                     if (mark > 0.3) void event.currentTarget.play().catch(() => undefined)
                   }}
@@ -1391,7 +1469,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                 <LyricView lines={lyrics} status={lyricStatus} current={current} onSeek={(time) => seek(time, true)} />
               </div>
             )}
-            <div className="stage-bar">
+            <div className="stage-bar" onPointerDown={armChromeHide} onPointerMove={armChromeHide}>
               <div className="stage-transport">
                 <button
                   type="button"
@@ -1406,12 +1484,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                   {clock(current)} / {clock(duration)}
                 </span>
               </div>
-              {stage === 'mv' ? (
-                <div className="stage-levels">
-                  <LevelControl label="音量" value={mvVolume} min={0} max={100} step={5} onChange={chooseMvVolume} />
-                  <LevelControl label="亮度" value={mvBrightness} min={40} max={160} step={5} onChange={chooseMvBrightness} />
-                </div>
-              ) : null}
+              <DragMeter label="MV音量" value={mvVolume} min={0} max={100} icon={<VolumeIcon muted={mvVolume === 0} />} onChange={chooseMvVolume} />
+              <DragMeter label="MV亮度" value={mvBrightness} min={40} max={160} icon={<BrightnessIcon />} onChange={chooseMvBrightness} />
             </div>
           </div>
         </div>

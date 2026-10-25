@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { coverUrl, type MusicItem } from '../lib/search'
 
 type Tab = 'queue' | 'recent'
@@ -15,10 +15,23 @@ type Props = {
 
 export function PlayQueue({ open, queue, recent, currentId, onClose, onPickQueue, onPickRecent }: Props) {
   const [tab, setTab] = useState<Tab>('queue')
+  const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (open) setTab('queue')
   }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const frame = window.requestAnimationFrame(() => {
+      const list = listRef.current
+      const node = list?.querySelector<HTMLElement>('.queue-item.is-on')
+      if (!list || !node) return
+      const top = node.getBoundingClientRect().top - list.getBoundingClientRect().top
+      list.scrollTop += top - list.clientHeight / 2 + node.clientHeight / 2
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [open, tab, currentId, queue, recent])
 
   useEffect(() => {
     if (!open) return
@@ -53,7 +66,7 @@ export function PlayQueue({ open, queue, recent, currentId, onClose, onPickQueue
             <span>{recent.length}</span>
           </button>
         </div>
-        <div className="queue-list">
+        <div className="queue-list" ref={listRef}>
           {items.length === 0 ? (
             <p className="meta">{empty}</p>
           ) : (
