@@ -8,6 +8,7 @@ const KEYS = {
   playMode: 'fmusic_website_play_mode',
   posterQuality: 'fmusic_website_poster_quality',
   mvQuality: 'fmusic_website_mv_quality',
+  songQuality: 'fmusic_website_song_quality',
   songVolume: 'fmusic_website_song_volume',
   songBrightness: 'fmusic_website_song_brightness',
   mvVolume: 'fmusic_website_mv_volume',
@@ -135,6 +136,15 @@ export function getPosterQuality() {
 
 export function savePosterQuality(quality: PictureQuality) {
   localStorage.setItem(KEYS.posterQuality, quality)
+}
+
+export function getSongQuality(): PictureQuality {
+  const raw = localStorage.getItem(KEYS.songQuality)
+  return PICTURE_QUALITIES.includes(raw as PictureQuality) ? (raw as PictureQuality) : 'hd'
+}
+
+export function saveSongQuality(quality: PictureQuality) {
+  localStorage.setItem(KEYS.songQuality, quality)
 }
 
 export function getMvQuality() {

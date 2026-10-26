@@ -15,6 +15,39 @@ const MV_QUALITY_CODE: Record<MvQuality, string> = {
 
 const MV_ORDER: MvQuality[] = ['sd', 'hd', 'fhd']
 
+const AUDIO_QUALITY: Record<MvQuality, { format: string; br: string }> = {
+  sd: { format: 'mp3', br: '128kmp3' },
+  hd: { format: 'mp3', br: '320kmp3' },
+  fhd: { format: 'flac', br: '2000kflac' },
+}
+
+const AUDIO_EXT = new Set(['mp3', 'flac', 'ape'])
+
+type AudioMeta = { format: string; bitrate: number; url: string }
+
+const mediaMeta = new Map<string, AudioMeta>()
+
+function audioMetaKey(rid: string, quality: MvQuality) {
+  return `audio:${rid}:${quality}`
+}
+
+export function playedAudioProfile(rid: string, quality: MvQuality): { quality: MvQuality; ext: string } {
+  const meta = mediaMeta.get(audioMetaKey(rid, quality))
+  const format = meta?.format ?? ''
+  const bitrate = meta?.bitrate ?? 0
+  let used = quality
+  if (format === 'flac' || format === 'ape' || bitrate >= 1000) used = 'fhd'
+  else if (bitrate >= 256) used = 'hd'
+  else if (bitrate > 0) used = 'sd'
+  let ext = AUDIO_EXT.has(format) ? format : ''
+  if (!ext) {
+    const fromUrl = meta?.url.match(/\.([a-z0-9]{3,4})(?:$|[?#])/i)?.[1]?.toLowerCase() ?? ''
+    if (AUDIO_EXT.has(fromUrl)) ext = fromUrl
+  }
+  if (!ext) ext = used === 'fhd' ? 'flac' : 'mp3'
+  return { quality: used, ext }
+}
+
 const QUALITY_FORMATS: Record<MvQuality, string[]> = {
   sd: ['EXMP4L', 'MP4L'],
   hd: ['EXMP4HV', 'MP4HV'],
@@ -127,7 +160,7 @@ async function resolvePlayableMvQualities(rid: string, mvId: string, formats?: s
 }
 
 export function getMediaUrl(rid: string, kind: 'audio' | 'mv', quality: MvQuality = 'fhd', mvId = ''): Promise<string> {
-  const key = kind === 'mv' ? `${kind}:${rid}:${mvId}:${quality}` : `${kind}:${rid}`
+  const key = kind === 'mv' ? `${kind}:${rid}:${mvId}:${quality}` : `${kind}:${rid}:${quality}`
   const cached = mediaCache.get(key)
   if (cached) return cached
   const job = fetchMediaUrl(rid, kind, quality, mvId).catch((error: unknown) => {
@@ -142,13 +175,25 @@ export function prefetchMedia(rid: string, kind: 'audio' | 'mv', quality: MvQual
   void getMediaUrl(rid, kind, quality, mvId).catch(() => undefined)
 }
 
-async function fetchMediaUrl(rid: string, kind: 'audio' | 'mv', quality: MvQuality, mvId = ''): Promise<string> {
-  if (kind === 'mv') return fetchMvUrl(rid, quality, mvId)
-  const res = await fetch(buildNmobiPath(rid))
+async function fetchAudioUrl(rid: string, quality: MvQuality) {
+  const spec = AUDIO_QUALITY[quality]
+  const res = await fetch(buildNmobiPath(rid, spec.format, spec.br))
   if (!res.ok) throw new Error('播放地址获取失败')
   const map = parseBody(await res.text())
   if (!map.url) throw new Error('未获取到播放地址')
-  return rewriteMediaUrl(map.url)
+  const url = rewriteMediaUrl(map.url)
+  const bitrate = Number(map.bitrate)
+  mediaMeta.set(audioMetaKey(rid, quality), {
+    format: (map.format || '').toLowerCase(),
+    bitrate: Number.isFinite(bitrate) ? bitrate : 0,
+    url,
+  })
+  return url
+}
+
+async function fetchMediaUrl(rid: string, kind: 'audio' | 'mv', quality: MvQuality, mvId = ''): Promise<string> {
+  if (kind === 'mv') return fetchMvUrl(rid, quality, mvId)
+  return fetchAudioUrl(rid, quality)
 }
 
 function isDirectVideo(url: string) {

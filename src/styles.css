@@ -1149,6 +1149,15 @@ body.lyric-open .sticky-top {
   background: var(--sand);
 }
 
+button.song-cover,
+button.audio-cover {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: zoom-in;
+}
+
 .poster-slot {
   position: relative;
   overflow: hidden;
@@ -1528,6 +1537,94 @@ body.lyric-open {
   place-items: center;
   padding: 24px;
   background: rgba(11, 31, 36, 0.72);
+}
+
+.cover-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 36;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(11, 31, 36, 0.82);
+}
+
+.cover-detail {
+  display: flex;
+  flex-direction: column;
+  width: min(920px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  border-radius: 16px;
+  background: #0b1f24;
+  color: #fff;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+.cover-detail header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 14px 16px;
+}
+
+.cover-detail header strong,
+.cover-detail header span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cover-detail header span,
+.cover-detail-count,
+.cover-detail-note {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+
+.cover-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.cover-detail-stage {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 0 12px 16px;
+}
+
+.cover-detail-stage.is-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cover-detail-stage img {
+  width: 100%;
+  max-height: calc(100vh - 160px);
+  object-fit: contain;
+  border-radius: 12px;
+  background: #081416;
+}
+
+.cover-detail-nav {
+  height: 36px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.cover-detail-note {
+  margin: 0;
+  padding: 0 16px 14px;
 }
 
 .stage {
@@ -2222,10 +2319,11 @@ body.lyric-open {
   border-radius: 50%;
   background: #243438;
   touch-action: pan-y;
-  cursor: grab;
+  cursor: zoom-in;
 }
 
-.poster-window:active {
+.poster-window.is-drag,
+.poster-window.is-drag:active {
   cursor: grabbing;
 }
 
@@ -2284,8 +2382,19 @@ body.lyric-open {
 }
 
 .player-actions .quality-switch,
-.stage header .quality-switch {
+.stage header .quality-switch,
+.quality-switch.is-light {
   margin-top: 0;
+}
+
+.quality-switch.is-light {
+  color: var(--ink);
+}
+
+.quality-switch.is-light select {
+  border-color: var(--line);
+  background: #fff;
+  color: var(--ink);
 }
 
 .quality-switch select {

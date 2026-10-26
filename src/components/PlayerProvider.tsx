@@ -16,6 +16,7 @@ import {
   getSongVolume,
   getPosterQuality,
   getRecentPlays,
+  getSongQuality,
   isFavorite,
   removeFavorite,
   saveDanmakuEnabled,
@@ -24,6 +25,7 @@ import {
   saveMvVolume,
   savePlayMode,
   saveSongBrightness,
+  saveSongQuality,
   saveSongVolume,
   savePosterQuality,
   toggleFavorite,
@@ -31,12 +33,13 @@ import {
 } from '../lib/library'
 import { getLyric, prefetchLyric, type LyricLine } from '../lib/lyric'
 import { nextPlayMode, PLAY_MODE_LABEL, resolveAdvance, type AdvanceDirection, type PlayMode } from '../lib/playback'
-import { mediaFilename, saveMedia } from '../lib/saveMedia'
-import { getMediaUrl, getPlayableMvQualities, listedMvQualities, prefetchMedia, sameMediaFile } from '../lib/play'
-import { coverUrl, findPlayable, isSongWithoutMv, POSTER_SIZE, rememberNoMv, songPosters, subscribeNoMv, type MusicItem } from '../lib/search'
+import { mediaFilename, pictureFilename, saveMedia, savePicture } from '../lib/saveMedia'
+import { getMediaUrl, getPlayableMvQualities, listedMvQualities, playedAudioProfile, prefetchMedia, sameMediaFile } from '../lib/play'
+import { coverUrl, findPlayable, isSongWithoutMv, POSTER_SIZE, rememberNoMv, songPosters, subscribeNoMv, withCoverSize, type MusicItem } from '../lib/search'
 
 type Kind = 'audio' | 'mv'
 type Loaded = { song: MusicItem; url: string }
+type CoverView = { urls: string[]; index: number; title: string; artist: string }
 
 type PlayerApi = {
   play: (song: MusicItem, kind: Kind, queue?: MusicItem[]) => void
@@ -161,16 +164,19 @@ function QualitySwitch({
   value,
   onChange,
   toolbar = false,
+  light = false,
   disabledValues = [],
 }: {
   label: string
   value: PictureQuality
   onChange: (value: PictureQuality) => void
   toolbar?: boolean
+  light?: boolean
   disabledValues?: PictureQuality[]
 }) {
+  const className = [toolbar ? 'stage-tool quality-switch' : 'quality-switch', light ? 'is-light' : ''].filter(Boolean).join(' ')
   return (
-    <label className={toolbar ? 'stage-tool quality-switch' : 'quality-switch'}>
+    <label className={className}>
       {toolbar ? <QualityIcon /> : <span>{label}</span>}
       <select
         aria-label={label}
@@ -338,7 +344,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [dragX, setDragX] = useState(0)
   const [brokenPosters, setBrokenPosters] = useState<string[]>([])
   const [posterQuality, setPosterQuality] = useState<PictureQuality>(getPosterQuality)
+  const [audioQuality, setAudioQuality] = useState<PictureQuality>(getSongQuality)
   const [mvQuality, setMvQuality] = useState<PictureQuality>(getMvQuality)
+  const [coverView, setCoverView] = useState<CoverView | null>(null)
+  const [coverSaving, setCoverSaving] = useState(false)
+  const [coverNote, setCoverNote] = useState('')
   const [mvQualityOptions, setMvQualityOptions] = useState<PictureQuality[] | null>(null)
   const [songVolume, setSongVolume] = useState(getSongVolume)
   const [songBrightness, setSongBrightness] = useState(getSongBrightness)
@@ -376,9 +386,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioSongRef = useRef<MusicItem | null>(null)
   const showLyricRef = useRef(true)
   const mvQualityRef = useRef(mvQuality)
+  const audioQualityRef = useRef(audioQuality)
   const videoTimeRef = useRef(0)
-  const posterDragRef = useRef<{ x: number; dx: number } | null>(null)
+  const posterDragRef = useRef<{ x: number; y: number; dx: number; dy: number } | null>(null)
   mvQualityRef.current = mvQuality
+  audioQualityRef.current = audioQuality
   queueRef.current = queue
   modeRef.current = playMode
   audioSongRef.current = audio?.song ?? null
@@ -538,9 +550,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setDragX(0)
   }
 
+  const openCover = (song?: MusicItem | null, currentUrl = '') => {
+    if (!song) return
+    const urls = songPosters(song, POSTER_SIZE.fhd)
+    if (!urls.length) return
+    const target = currentUrl ? withCoverSize(currentUrl, POSTER_SIZE.fhd) : urls[0]
+    const found = target ? urls.indexOf(target) : 0
+    setCoverNote('')
+    setCoverView({
+      urls,
+      index: found >= 0 ? found : 0,
+      title: song.title,
+      artist: song.artist,
+    })
+  }
+
+  const slideCover = (dir: number) => {
+    setCoverNote('')
+    setCoverView((view) => {
+      if (!view || view.urls.length < 2) return view
+      return { ...view, index: (view.index + dir + view.urls.length) % view.urls.length }
+    })
+  }
+
   const onPosterDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (posterCount < 2 || event.button !== 0) return
-    posterDragRef.current = { x: event.clientX, dx: 0 }
+    if (event.button !== 0) return
+    posterDragRef.current = { x: event.clientX, y: event.clientY, dx: 0, dy: 0 }
+    if (posterCount < 2) return
     setPosterDragging(true)
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -549,21 +585,45 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const drag = posterDragRef.current
     if (!drag) return
     drag.dx = event.clientX - drag.x
-    setDragX(drag.dx)
+    drag.dy = event.clientY - drag.y
+    if (posterDragging || posterCount >= 2) setDragX(drag.dx)
   }
 
   const onPosterUp = () => {
-    const dx = posterDragRef.current?.dx ?? 0
+    const drag = posterDragRef.current
     posterDragRef.current = null
     setPosterDragging(false)
-    if (dx <= -48) slidePoster(1)
-    else if (dx >= 48) slidePoster(-1)
+    if (!drag) return
+    if (drag.dx <= -48) slidePoster(1)
+    else if (drag.dx >= 48) slidePoster(-1)
     else setDragX(0)
+    if (Math.abs(drag.dx) < 48 && Math.abs(drag.dy) < 48) openCover(lyricSong, posters[posterAt])
+  }
+
+  const onPosterCancel = () => {
+    posterDragRef.current = null
+    setPosterDragging(false)
+    setDragX(0)
   }
 
   useEffect(() => {
     setPosterIndex(0)
   }, [posterToken])
+
+  useEffect(() => {
+    if (!coverView) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setCoverView(null)
+        return
+      }
+      if (coverView.urls.length < 2) return
+      if (event.key === 'ArrowRight') slideCover(1)
+      if (event.key === 'ArrowLeft') slideCover(-1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [coverView])
 
   useEffect(() => {
     if (paused || posterCount < 2) return
@@ -819,7 +879,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     }
     try {
-      const url = await getMediaUrl(song.id, kind, mvQualityRef.current, song.mvId ?? '')
+      const url = await getMediaUrl(song.id, kind, kind === 'mv' ? mvQualityRef.current : audioQualityRef.current, song.mvId ?? '')
       if (ticket !== requestRef.current) return
       if (kind === 'audio') {
         audioTimeRef.current = 0
@@ -946,7 +1006,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const warm = (song: MusicItem, kind: Kind) => {
     if (!song.id) return
-    prefetchMedia(song.id, kind, mvQualityRef.current, song.mvId ?? '')
+    prefetchMedia(song.id, kind, kind === 'mv' ? mvQualityRef.current : audioQualityRef.current, song.mvId ?? '')
     if (kind === 'audio') prefetchLyric(song.id)
   }
 
@@ -1021,6 +1081,46 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPosterQuality(quality)
   }
 
+  const qualityLabel = (quality: PictureQuality) => QUALITY_OPTIONS.find((option) => option.id === quality)?.label ?? ''
+
+  const chooseAudioQuality = (quality: PictureQuality) => {
+    if (quality === audioQualityRef.current) return
+    const previous = audioQualityRef.current
+    saveSongQuality(quality)
+    audioQualityRef.current = quality
+    setAudioQuality(quality)
+    const song = audio?.song.id ? audio.song : activeKind === 'audio' ? queued : null
+    if (!song?.id || activeKind !== 'audio') return
+    const previousUrl = audio?.url ?? ''
+    const hadAudio = Boolean(audio?.url)
+    audioTimeRef.current = audioRef.current?.currentTime ?? audioTimeRef.current
+    const ticket = ++requestRef.current
+    setPending(true)
+    setError('')
+    getMediaUrl(song.id, 'audio', quality)
+      .then((url) => {
+        if (ticket !== requestRef.current) return
+        setAudio({ song, url })
+        const profile = playedAudioProfile(song.id, quality)
+        if (profile.quality !== quality) {
+          setError(`这首歌没有${qualityLabel(quality)}，正在播放${qualityLabel(profile.quality)}。`)
+          return
+        }
+        if (previousUrl && sameMediaFile(previousUrl, url)) setError('这次换音质后，拿到的还是同一个音频文件。')
+      })
+      .catch((reason: unknown) => {
+        if (ticket !== requestRef.current) return
+        audioQualityRef.current = previous
+        setAudioQuality(previous)
+        saveSongQuality(previous)
+        setError(reason instanceof Error ? reason.message : '播放地址获取失败')
+        if (!hadAudio) void open(song, 'audio')
+      })
+      .finally(() => {
+        if (ticket === requestRef.current) setPending(false)
+      })
+  }
+
   const chooseMvQuality = (quality: PictureQuality) => {
     if (mvQualityOptions && !mvQualityOptions.includes(quality)) return
     saveMvQuality(quality)
@@ -1080,11 +1180,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setError('')
     setDownloading(true)
     try {
-      await saveMedia(item.url, mediaFilename(item.song.title, item.song.artist, kind, kind === 'mv' ? (QUALITY_OPTIONS.find((option) => option.id === mvQualityRef.current)?.label ?? '') : ''))
+      const selected = kind === 'mv' ? mvQualityRef.current : audioQualityRef.current
+      const profile = kind === 'audio' ? playedAudioProfile(item.song.id, selected) : null
+      const label = qualityLabel(profile?.quality ?? selected)
+      const ext = profile?.ext ?? 'mp4'
+      await saveMedia(item.url, mediaFilename(item.song.title, item.song.artist, kind, label, ext))
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : '下载失败')
     } finally {
       setDownloading(false)
+    }
+  }
+
+  const saveCover = async () => {
+    if (!coverView || coverSaving) return
+    const url = coverView.urls[coverView.index]
+    if (!url) return
+    setCoverSaving(true)
+    setCoverNote('')
+    try {
+      await savePicture(url, pictureFilename(coverView.title, coverView.artist, coverView.index, coverView.urls.length))
+    } catch (reason: unknown) {
+      setCoverNote(reason instanceof Error ? reason.message : '图片保存失败')
+    } finally {
+      setCoverSaving(false)
     }
   }
 
@@ -1174,11 +1293,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         <div className="player-stack" ref={stackRef}>
           <div className="player-dock">
           {dockPosters.length ? (
-            <span className="song-cover poster-slot">
+            <button type="button" className="song-cover poster-slot" aria-label="查看封面" onClick={() => openCover(dockSong, dockPosters[dockAt])}>
               {dockPosters.map((url, index) => (
                 <img key={url} src={url} alt="" className={index === dockAt ? 'is-on' : ''} onError={() => hidePoster(url)} />
               ))}
-            </span>
+            </button>
           ) : (
             <span className="song-cover" />
           )}
@@ -1225,6 +1344,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               >
                 {favOn ? '已收藏' : '收藏'}
               </button>
+            ) : null}
+            {activeKind === 'audio' && dockSong ? (
+              <QualitySwitch light label="音质" value={audioQuality} onChange={chooseAudioQuality} />
             ) : null}
             {active ? (
               <button
@@ -1310,11 +1432,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               <div className="lyric-poster">
                 <div className="lyric-disc-ring" />
                 <div
-                  className="poster-window"
+                  className={posterDragging ? 'poster-window is-drag' : 'poster-window'}
                   onPointerDown={onPosterDown}
                   onPointerMove={onPosterMove}
                   onPointerUp={onPosterUp}
-                  onPointerCancel={onPosterUp}
+                  onPointerCancel={onPosterCancel}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="查看封面"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      openCover(lyricSong, posters[posterAt])
+                    }
+                  }}
                 >
                   {posters.length ? (
                     <div
@@ -1463,9 +1594,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               </div>
             ) : (
               <div className="audio-stage">
-                <div className="audio-cover">
+                <button type="button" className="audio-cover" aria-label="查看封面" onClick={() => openCover(active.song, coverUrl(active.song.image))}>
                   {coverUrl(active.song.image) ? <img src={coverUrl(active.song.image)} alt="" /> : <span />}
-                </div>
+                </button>
                 <LyricView lines={lyrics} status={lyricStatus} current={current} onSeek={(time) => seek(time, true)} />
               </div>
             )}
@@ -1487,6 +1618,63 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               <DragMeter label="MV音量" value={mvVolume} min={0} max={100} icon={<VolumeIcon muted={mvVolume === 0} />} onChange={chooseMvVolume} />
               <DragMeter label="MV亮度" value={mvBrightness} min={40} max={160} icon={<BrightnessIcon />} onChange={chooseMvBrightness} />
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {coverView ? (
+        <div className="cover-layer" onClick={() => setCoverView(null)}>
+          <div
+            className="cover-detail"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${coverView.title} 封面`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div>
+                <strong>{coverView.title}</strong>
+                <span>{coverView.artist}</span>
+              </div>
+              <div className="cover-detail-actions">
+                {coverView.urls.length > 1 ? (
+                  <span className="cover-detail-count">
+                    {coverView.index + 1} / {coverView.urls.length}
+                  </span>
+                ) : null}
+                <button type="button" className="text-btn" disabled={coverSaving} onClick={() => void saveCover()}>
+                  {coverSaving ? '保存中…' : '保存图片'}
+                </button>
+                <button type="button" className="text-btn" onClick={() => setCoverView(null)}>
+                  关闭
+                </button>
+              </div>
+            </header>
+            <div className={coverView.urls.length > 1 ? 'cover-detail-stage' : 'cover-detail-stage is-single'}>
+              {coverView.urls.length > 1 ? (
+                <button type="button" className="cover-detail-nav" aria-label="上一张" onClick={() => slideCover(-1)}>
+                  上一张
+                </button>
+              ) : null}
+              <img
+                src={coverView.urls[coverView.index]}
+                alt=""
+                onError={() => {
+                  setCoverView((view) => {
+                    if (!view) return view
+                    const urls = view.urls.filter((_, index) => index !== view.index)
+                    if (!urls.length) return null
+                    return { ...view, urls, index: Math.min(view.index, urls.length - 1) }
+                  })
+                }}
+              />
+              {coverView.urls.length > 1 ? (
+                <button type="button" className="cover-detail-nav" aria-label="下一张" onClick={() => slideCover(1)}>
+                  下一张
+                </button>
+              ) : null}
+            </div>
+            {coverNote ? <p className="cover-detail-note">{coverNote}</p> : null}
           </div>
         </div>
       ) : null}
