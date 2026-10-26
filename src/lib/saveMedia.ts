@@ -62,22 +62,56 @@ function pictureExt(bytes: Uint8Array) {
   return ''
 }
 
-function pictureFetchUrl(url: string) {
-  if (url.startsWith('/') || url.startsWith(API_BASE)) return url
+function pictureTargets(url: string) {
+  const targets: string[] = []
+  if (url.startsWith('/') || url.startsWith(`${API_BASE}/`) || /^https?:\/\//i.test(url)) targets.push(url)
   const proxied = toProxyMediaUrl(url)
-  return proxied.startsWith(`${API_BASE}/`) ? proxied : ''
+  if (proxied.startsWith(`${API_BASE}/`) && !targets.includes(proxied)) targets.push(proxied)
+  return targets
+}
+
+function loadCorsImage(url: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('图片保存失败'))
+    img.src = url
+  })
+}
+
+async function pictureFromCanvas(url: string) {
+  const img = await loadCorsImage(url)
+  const canvas = document.createElement('canvas')
+  canvas.width = img.naturalWidth
+  canvas.height = img.naturalHeight
+  const ctx = canvas.getContext('2d')
+  if (!ctx || !canvas.width || !canvas.height) throw new Error('图片保存失败')
+  ctx.drawImage(img, 0, 0)
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob((file) => resolve(file), 'image/jpeg', 0.92))
+  if (!blob) throw new Error('下载到的不是图片，没有保存')
+  return new Uint8Array(await blob.arrayBuffer())
 }
 
 export async function savePicture(url: string, filename: string) {
-  const target = pictureFetchUrl(url)
-  if (!target) throw new Error('图片地址无效')
-  const res = await fetch(target)
-  if (!res.ok) throw new Error('图片保存失败')
-  const bytes = new Uint8Array(await res.arrayBuffer())
-  const contentType = res.headers.get('content-type') ?? ''
-  const ext = pictureExt(bytes)
-  if (!ext) throw new Error('下载到的不是图片，没有保存')
-  triggerDownload(new Blob([bytes], { type: contentType || `image/${ext}` }), `${filename}.${ext}`)
+  const targets = pictureTargets(url)
+  if (!targets.length) throw new Error('图片地址无效')
+  for (const target of targets) {
+    try {
+      const res = await fetch(target)
+      if (!res.ok) continue
+      const bytes = new Uint8Array(await res.arrayBuffer())
+      const ext = pictureExt(bytes)
+      if (!ext) continue
+      const contentType = res.headers.get('content-type') ?? ''
+      triggerDownload(new Blob([bytes], { type: contentType.startsWith('image/') ? contentType : `image/${ext === 'jpg' ? 'jpeg' : ext}` }), `${filename}.${ext}`)
+      return
+    } catch {
+      /* 这个地址拿不到图片时，继续试下一条 */
+    }
+  }
+  const drawn = await pictureFromCanvas(targets[0]!)
+  triggerDownload(new Blob([drawn], { type: 'image/jpeg' }), `${filename}.jpg`)
 }
 
 export async function saveMedia(url: string, filename: string) {
