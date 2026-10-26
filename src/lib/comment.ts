@@ -1,5 +1,5 @@
-import { API_BASE } from './api'
 import { plainText } from './text'
+import { endpoint } from './source'
 
 export type SongComment = {
   id: string
@@ -175,7 +175,7 @@ async function fetchPage(rid: string, page: number, rows: number, type: 'get_com
     uid: '0',
     prod: 'newWeb',
   })
-  return readRows(`${API_BASE}/kw-comment/com.s?${qs}`)
+  return readRows(endpoint('comment', `/com.s?${qs}`))
 }
 
 function ownComments(rows: RawRow[]) {

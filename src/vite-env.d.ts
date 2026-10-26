@@ -6,6 +6,7 @@ interface ImportMetaEnv {
   readonly VITE_BASE: string
   readonly VITE_SOURCEMAP: string
   readonly VITE_DEV_PORT: string
+  readonly VITE_USE_PROXY: string
   readonly VITE_KW_SEARCH_TARGET: string
   readonly VITE_KW_OPENAPI_TARGET: string
   readonly VITE_KW_IMG_TARGET: string

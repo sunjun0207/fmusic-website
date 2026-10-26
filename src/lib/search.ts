@@ -1,5 +1,5 @@
-import { API_BASE } from './api'
 import { plainText } from './text'
+import { endpoint, jsonp, useProxy, DIRECT_SUGGEST } from './source'
 
 export type MusicItem = {
   id: string
@@ -104,7 +104,11 @@ export function coverUrl(path?: string, kind: 'album' | 'artist' = 'album') {
           url.protocol = 'https:'
           return url.toString()
         }
-        return `${API_BASE}/kw-img${url.pathname}${url.search}`
+        if (!useProxy) {
+          url.protocol = 'https:'
+          return url.toString()
+        }
+        return endpoint('img', `${url.pathname}${url.search}`)
       }
     } catch {
       return path
@@ -112,9 +116,9 @@ export function coverUrl(path?: string, kind: 'album' | 'artist' = 'album') {
     return path
   }
   const cleaned = path.replace(/^\/+/, '')
-  if (cleaned.startsWith('star/')) return `${API_BASE}/kw-img/${cleaned}`
+  if (cleaned.startsWith('star/')) return endpoint('img', `/${cleaned}`)
   const root = kind === 'artist' ? 'star/starheads' : 'star/albumcover'
-  return `${API_BASE}/kw-img/${root}/${cleaned}`
+  return endpoint('img', `/${root}/${cleaned}`)
 }
 
 function collectImages(album: string, artist: string, mv: string) {
@@ -188,14 +192,19 @@ export async function searchMusic(keyword: string, pn = 0, rn = 20): Promise<Sea
     encoding: 'utf8',
     vipver: '1',
   })
-  const res = await fetch(`${API_BASE}/kw-search/r.s?${qs}`)
-  if (!res.ok) throw new Error('搜索失败')
-  const text = await res.text()
+  const path = `/r.s?${qs}`
   let data: Record<string, unknown>
-  try {
-    data = JSON.parse(text) as Record<string, unknown>
-  } catch {
-    data = JSON.parse(text.replace(/'/g, '"')) as Record<string, unknown>
+  if (useProxy) {
+    const res = await fetch(endpoint('search', path))
+    if (!res.ok) throw new Error('搜索失败')
+    const text = await res.text()
+    try {
+      data = JSON.parse(text) as Record<string, unknown>
+    } catch {
+      data = JSON.parse(text.replace(/'/g, '"')) as Record<string, unknown>
+    }
+  } else {
+    data = await jsonp<Record<string, unknown>>(endpoint('search', path))
   }
   const list = (pick(data, 'abslist', 'list') as Record<string, unknown>[] | undefined) ?? []
   const total = Number(pick(data, 'TOTAL', 'total', 'HIT', 'hit') ?? list.length) || 0
@@ -241,10 +250,18 @@ export async function findPlayable(title: string, artist: string): Promise<Music
 export async function searchKey(keyword: string): Promise<string[]> {
   const q = keyword.trim()
   if (!q) return []
-  const res = await fetch(`${API_BASE}/kw-openapi/openapi/v1/www/search/searchKey?key=${encodeURIComponent(q)}`)
-  if (!res.ok) return []
-  const data = (await res.json()) as { data?: unknown }
-  const raw = data.data
+  let raw: unknown
+  if (!useProxy) {
+    const qs = new URLSearchParams({ c: 'web', w: q, encoding: 'utf8' })
+    const res = await fetch(`${DIRECT_SUGGEST}?${qs}`)
+    if (!res.ok) return []
+    raw = await res.text()
+  } else {
+    const res = await fetch(endpoint('openapi', `/openapi/v1/www/search/searchKey?key=${encodeURIComponent(q)}`))
+    if (!res.ok) return []
+    const data = (await res.json()) as { data?: unknown }
+    raw = data.data
+  }
   if (!raw) return []
 
   const extract = (text: string) => {
@@ -269,8 +286,11 @@ export async function searchKey(keyword: string): Promise<string[]> {
       .slice(0, 8)
   }
   if (typeof raw === 'string') {
-    const word = extract(raw)
-    return word ? [word] : []
+    return raw
+      .split(/\n(?=RELWORD=)/i)
+      .map((part) => extract(part))
+      .filter(Boolean)
+      .slice(0, 8)
   }
   return []
 }

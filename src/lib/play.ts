@@ -1,5 +1,6 @@
 import { API_BASE } from './api'
 import { buildMvNmobiPath, buildNmobiPath } from './kuwoDes'
+import { endpoint, useProxy } from './source'
 
 const KUWO_KW_HOST = /^kw-[a-z0-9-]+\.kuwo\.cn$/i
 const KUWO_MEDIA_HOST = /(?:^|\.)kuwo\.cn$/i
@@ -76,7 +77,7 @@ function mediaFileKey(url: string) {
 
 async function fetchQualityToken(rid: string, quality: MvQuality) {
   const code = MV_QUALITY_CODE[quality]
-  const web = `${API_BASE}/kw-nmobi/mobi.s?f=web&type=convert_mv_url&rid=${encodeURIComponent(rid)}&quality=${code}&format=mp4`
+  const web = endpoint('nmobi', `/mobi.s?f=web&type=convert_mv_url&rid=${encodeURIComponent(rid)}&quality=${code}&format=mp4`)
   const res = await fetch(web, { signal: AbortSignal.timeout(8000) })
   const text = (await res.text()).trim().split(/\s+/)[0] ?? ''
   if (!res.ok || !/^https?:\/\//i.test(text)) return ''
@@ -182,7 +183,7 @@ async function readVideoHead(proxyUrl: string) {
 }
 
 async function acceptQualityUrl(url: string) {
-  if (isDirectVideo(url)) return toProxyMediaUrl(url)
+  if (isDirectVideo(url)) return useProxy ? toProxyMediaUrl(url) : rewriteMediaUrl(url)
   const proxied = toProxyMediaUrl(url)
   if (!proxied.startsWith(`${API_BASE}/`)) return ''
   if (!gatewayAlive) {
@@ -196,7 +197,7 @@ async function acceptQualityUrl(url: string) {
 
 async function fetchQualityUrl(rid: string, quality: MvQuality) {
   const code = MV_QUALITY_CODE[quality]
-  const web = `${API_BASE}/kw-nmobi/mobi.s?f=web&type=convert_mv_url&rid=${encodeURIComponent(rid)}&quality=${code}&format=mp4`
+  const web = endpoint('nmobi', `/mobi.s?f=web&type=convert_mv_url&rid=${encodeURIComponent(rid)}&quality=${code}&format=mp4`)
   const res = await fetch(web, { signal: AbortSignal.timeout(8000) })
   const text = (await res.text()).trim().split(/\s+/)[0] ?? ''
   if (!res.ok || !/^https?:\/\//i.test(text)) return ''
