@@ -75,6 +75,31 @@ function tidySeparators(value: string) {
   return value.replace(/([\u3400-\u9fff])\s*[&＆+＋/／|｜]\s*(?=[\u3400-\u9fff])/g, '$1、')
 }
 
+/** 榜单名这类短名称：去掉来源品牌，留下「热歌榜」这样的名字。 */
+export function displayName(value: string) {
+  return value
+    .replace(/酷我音乐|酷我/g, '')
+    .replace(/(?:ID\s*[:：]?\s*)?B56F5813/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s·,，、\-—]+|[\s·,，、\-—]+$/g, '')
+    .trim()
+}
+
+/** 介绍、规则、简介：整句提到来源品牌或指定 ID 时不展示。 */
+export function displayCopy(value: string) {
+  return value
+    .split(/(?<=[。！？；;])/)
+    .map((part) => part.trim())
+    .filter((part) => part && !part.includes('酷我') && !/B56F5813/i.test(part))
+    .join('')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+export function isHiddenPublicId(value: unknown) {
+  return /b56f5813/i.test(String(value ?? ''))
+}
+
 export function plainText(value: unknown) {
   let text = decodeEntities(decodePercent(decodeUnicodeEscapes(String(value ?? ''))))
   text = decodeEntities(text.replace(/<\d+\s*,\s*\d+\s*,\s*\d+>/g, '').replace(/<[^>]*>/g, ''))

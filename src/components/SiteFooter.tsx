@@ -61,7 +61,7 @@ export function SiteFooter() {
       </div>
       <div className="wrap footer-bottom">
         <span>© 2026 {PRODUCT} · 让热爱持续发声</span>
-        <span>曲库、榜单、歌单与评论来自酷我音乐公开接口，版权归原作者所有；本站不存储音频。</span>
+        <span>曲库内容版权归原作者所有，本站不存储音频。</span>
       </div>
     </footer>
   )

@@ -1,6 +1,6 @@
 import { coverUrl, type MusicItem } from './search'
 import { endpoint } from './source'
-import { plainText } from './text'
+import { displayCopy, displayName, isHiddenPublicId, plainText } from './text'
 
 type Json = Record<string, unknown>
 
@@ -51,7 +51,7 @@ function paragraphs(value: unknown) {
   return str(value)
     .replace(/<br\s*\/?>/gi, '\n')
     .split(/\r?\n+/)
-    .map((line) => plainText(line))
+    .map((line) => displayCopy(plainText(line)))
     .filter(Boolean)
 }
 
@@ -61,7 +61,7 @@ function isSong(item: MusicItem | null): item is MusicItem {
 
 export function toSong(raw: Json): MusicItem | null {
   const id = str(raw.rid || raw.musicrid).replace(/^MUSIC_/, '')
-  if (!/^\d+$/.test(id)) return null
+  if (!/^\d+$/.test(id) || isHiddenPublicId(id)) return null
   const pic = str(raw.pic || raw.albumpic || raw.pic120)
   const artistId = str(raw.artistid)
   const albumId = str(raw.albumid)
@@ -102,8 +102,8 @@ export function fetchChartGroups(): Promise<ChartGroup[]> {
         charts: rows(group.list)
           .map((item) => ({
             id: str(item.sourceid),
-            name: plainText(item.name),
-            intro: plainText(item.intro),
+            name: displayName(plainText(item.name)) || '排行榜',
+            intro: displayCopy(plainText(item.intro)),
             pic: str(item.pic),
             pub: plainText(item.pub),
           }))
@@ -176,15 +176,15 @@ export type TagGroup = { name: string; tags: TagItem[] }
 
 function toPlaylist(raw: Json): PlaylistCard | null {
   const id = str(raw.id)
-  if (!/^\d+$/.test(id)) return null
+  if (!/^\d+$/.test(id) || isHiddenPublicId(id)) return null
   return {
     id,
-    name: plainText(raw.name) || '未命名歌单',
+    name: displayName(plainText(raw.name)) || '未命名歌单',
     cover: str(raw.img500 || raw.img || raw.img700 || raw.img300),
     plays: num(raw.listencnt),
     count: num(raw.total),
     creator: plainText(raw.uname || raw.userName),
-    intro: plainText(raw.info || raw.desc),
+    intro: displayCopy(plainText(raw.info || raw.desc)),
   }
 }
 
@@ -416,16 +416,17 @@ export function fetchBanners(): Promise<BannerItem[]> {
     return rows(data.data)
       .map((raw) => {
         const [label = '', ...rest] = plainText(raw.newPicText).split('|')
-        const title = rest.join(' ') || label
+        const title = displayCopy(rest.join(' ') || label)
+        if (isHiddenPublicId(raw.id) || isHiddenPublicId(title)) return null
         return {
           id: str(raw.id),
           pic: str(raw.newPic || raw.pic),
-          label: rest.length ? label : '推荐',
+          label: displayName(rest.length ? label : '推荐') || '推荐',
           title,
           href: localLink(str(raw.url)),
         }
       })
-      .filter((item) => item.pic && item.href && item.title)
+      .filter((item): item is BannerItem => item !== null && Boolean(item.pic && item.href && item.title))
   })
 }
 

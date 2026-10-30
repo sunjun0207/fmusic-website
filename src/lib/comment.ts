@@ -1,4 +1,4 @@
-import { plainText } from './text'
+import { displayCopy, isHiddenPublicId, plainText } from './text'
 import { endpoint } from './source'
 
 export type SongComment = {
@@ -35,11 +35,13 @@ type RawPage = {
 }
 
 function commentText(value: unknown) {
-  return String(value ?? '')
-    .split(/\n/)
-    .map((line) => plainText(line))
-    .filter(Boolean)
-    .join('\n')
+  return displayCopy(
+    String(value ?? '')
+      .split(/\n/)
+      .map((line) => plainText(line))
+      .filter(Boolean)
+      .join('\n'),
+  )
 }
 
 function marks(row: RawRow) {
@@ -63,7 +65,7 @@ function parentRow(row: RawRow) {
 
 function toComment(row: RawRow, index: number, parentId: string): SongComment | null {
   const text = commentText(row.msg)
-  if (!text) return null
+  if (!text || isHiddenPublicId(row.id) || isHiddenPublicId(row.u_name)) return null
   const avatar = String(row.u_pic ?? '')
   return {
     id: String(row.id || `${index}-${text.slice(0, 12)}`),

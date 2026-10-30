@@ -68,10 +68,6 @@ export function AboutPage() {
             <strong>{APP_VERSION}</strong>
           </div>
           <div>
-            <span>数据来源</span>
-            <strong>酷我音乐公开接口</strong>
-          </div>
-          <div>
             <span>联系我们</span>
             <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
           </div>

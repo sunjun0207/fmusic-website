@@ -1,6 +1,6 @@
 import type { PlayMode } from './playback'
 import type { MusicItem } from './search'
-import { plainText } from './text'
+import { isHiddenPublicId, plainText } from './text'
 
 const KEYS = {
   recentPlays: 'fmusic_website_recent_plays',
@@ -59,6 +59,10 @@ function writeJson(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value))
 }
 
+function shownSong(item: MusicItem) {
+  return !isHiddenPublicId(item.id) && !isHiddenPublicId(item.title)
+}
+
 function presentSong(item: MusicItem): MusicItem {
   return {
     ...item,
@@ -95,7 +99,7 @@ export function clearSearchHistory() {
 }
 
 export function getRecentPlays(): MusicItem[] {
-  return readJson<MusicItem[]>(KEYS.recentPlays, []).map(presentSong)
+  return readJson<MusicItem[]>(KEYS.recentPlays, []).filter(shownSong).map(presentSong)
 }
 
 export type PlayStats = { count: number; since: number }
@@ -123,7 +127,7 @@ export function clearRecentPlays() {
 }
 
 export function getFavorites(): MusicItem[] {
-  return readJson<MusicItem[]>(KEYS.favorites, []).map(presentSong)
+  return readJson<MusicItem[]>(KEYS.favorites, []).filter(shownSong).map(presentSong)
 }
 
 export function isFavorite(id: string): boolean {
@@ -163,8 +167,8 @@ export type MyPlaylist = { id: string; name: string; songs: MusicItem[]; created
 
 export function getMyPlaylists(): MyPlaylist[] {
   return readJson<MyPlaylist[]>(KEYS.myPlaylists, [])
-    .filter((item) => item && item.id && Array.isArray(item.songs))
-    .map((item) => ({ ...item, name: plainText(item.name) || '我的专属歌单', songs: item.songs.map(presentSong) }))
+    .filter((item) => item && item.id && Array.isArray(item.songs) && !isHiddenPublicId(item.id) && !isHiddenPublicId(item.name))
+    .map((item) => ({ ...item, name: plainText(item.name) || '我的专属歌单', songs: item.songs.filter(shownSong).map(presentSong) }))
 }
 
 function saveMyPlaylists(list: MyPlaylist[]) {
