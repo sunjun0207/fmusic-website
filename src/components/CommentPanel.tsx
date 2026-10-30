@@ -125,9 +125,9 @@ export function CommentPanel({ songId }: { songId: string }) {
         <strong>评论</strong>
         {total > 0 ? <span>{total}</span> : null}
       </header>
-      {status === 'loading' ? <p className="comment-state">评论加载中…</p> : null}
-      {status === 'empty' ? <p className="comment-state">还没有评论</p> : null}
-      {status === 'error' ? <p className="comment-state">评论暂时加载不了</p> : null}
+      {status === 'loading' ? <p className="comment-state">正在加载大家的故事……</p> : null}
+      {status === 'empty' ? <p className="comment-state">还没有人留言，这首歌在等第一个懂它的人。</p> : null}
+      {status === 'error' ? <p className="comment-state">网络开了个小差，稍后再来看评论吧</p> : null}
       {status === 'ready' ? (
         <ul className="comment-list">
           {list.map((item) => (

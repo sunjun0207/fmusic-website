@@ -1,44 +1,41 @@
 import { useEffect, useRef, useState } from 'react'
-import { usePlayer } from './PlayerProvider'
-import { clearSearchHistory, getSearchHistory } from '../lib/library'
+import { FALLBACK_KEYWORDS, NAV } from '../data/brand'
+import { fetchHotKeywords } from '../lib/kuwo'
+import { clearSearchHistory, getNickname, getSearchHistory } from '../lib/library'
 import { searchHash, type Route } from '../lib/route'
 import { searchKey } from '../lib/search'
-
-const DISCOVER = new Set<Route['name']>([
-  'discover',
-  'toplist',
-  'playlists',
-  'playlist',
-  'artists',
-  'artist',
-  'albums',
-  'album',
-  'search',
-])
+import { useLibraryVersion } from '../lib/useLibrary'
+import { Icon } from './Icon'
+import { Logo } from './Logo'
+import { usePlayer } from './PlayerProvider'
 
 export function SiteHeader({ route }: { route: Route }) {
   const [open, setOpen] = useState(false)
   const [keyword, setKeyword] = useState(route.name === 'search' ? route.q : '')
   const [suggests, setSuggests] = useState<string[]>([])
   const [history, setHistory] = useState<string[]>([])
+  const [hot, setHot] = useState<string[]>([])
   const [suggestOpen, setSuggestOpen] = useState(false)
   const slotRef = useRef<HTMLDivElement>(null)
   const player = usePlayer()
+  useLibraryVersion()
+  const nickname = getNickname()
 
   useEffect(() => {
-    const close = () => setOpen(false)
-    window.addEventListener('hashchange', close)
-    return () => window.removeEventListener('hashchange', close)
-  }, [])
-
-  useEffect(() => {
+    setOpen(false)
     setKeyword(route.name === 'search' ? route.q : '')
     setSuggestOpen(false)
-  }, [route.key])
+  }, [route.key, route.name, route.q])
 
   useEffect(() => {
-    if (suggestOpen) setHistory(getSearchHistory())
-  }, [suggestOpen, route.key])
+    if (!suggestOpen) return
+    setHistory(getSearchHistory())
+    if (!hot.length) {
+      fetchHotKeywords()
+        .then((words) => setHot(words.length ? words : FALLBACK_KEYWORDS))
+        .catch(() => setHot(FALLBACK_KEYWORDS))
+    }
+  }, [suggestOpen, hot.length])
 
   useEffect(() => {
     const q = keyword.trim()
@@ -58,8 +55,15 @@ export function SiteHeader({ route }: { route: Route }) {
     const onPointer = (event: PointerEvent) => {
       if (!slotRef.current?.contains(event.target as Node)) setSuggestOpen(false)
     }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSuggestOpen(false)
+    }
     document.addEventListener('pointerdown', onPointer)
-    return () => document.removeEventListener('pointerdown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [])
 
   const go = (value: string) => {
@@ -71,33 +75,19 @@ export function SiteHeader({ route }: { route: Route }) {
     window.location.hash = searchHash(q)
   }
 
+  const typing = keyword.trim() !== ''
+  const showPanel = suggestOpen && (typing ? suggests.length > 0 : history.length > 0 || hot.length > 0)
+
   return (
     <header className="site-header">
-      <div className={`wrap header-inner${open ? ' open' : ''}`}>
-        <a className="logo" href="#/discover">
-          <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
-            <circle cx="18" cy="18" r="16" fill="#1aa6a0" />
-            <circle cx="18" cy="18" r="7" fill="none" stroke="#0b1f24" strokeWidth="1.4" />
-            <circle cx="18" cy="18" r="2.2" fill="#0b1f24" />
-          </svg>
-          <span className="logo-text">
-            <small>聆听</small>
-            jun.sun
-          </span>
-        </a>
+      <div className={`wrap header-inner${open ? ' is-open' : ''}`}>
+        <Logo />
         <nav className="main-nav" aria-label="主导航">
-          <a className={DISCOVER.has(route.name) ? 'active' : ''} href="#/discover">
-            发现音乐
-          </a>
-          <a className={route.name === 'favorites' ? 'active' : ''} href="#/favorites">
-            收藏
-          </a>
-          <a className={route.name === 'download' ? 'active' : ''} href="#/download">
-            听歌说明
-          </a>
-          <a className={route.name === 'about' ? 'active' : ''} href="#/about">
-            关于
-          </a>
+          {NAV.map((item) => (
+            <a key={item.href} href={item.href} className={item.names.includes(route.name) ? 'active' : undefined} aria-current={item.names.includes(route.name) ? 'page' : undefined}>
+              {item.label}
+            </a>
+          ))}
         </nav>
         <div className="search-slot" ref={slotRef}>
           <form
@@ -108,6 +98,7 @@ export function SiteHeader({ route }: { route: Route }) {
               go(keyword)
             }}
           >
+            <Icon name="search" size={16} className="search-icon" />
             <input
               value={keyword}
               onChange={(event) => {
@@ -118,44 +109,77 @@ export function SiteHeader({ route }: { route: Route }) {
                 player.dismissLyric()
                 setSuggestOpen(true)
               }}
-              placeholder="搜索歌曲、歌手、歌单"
-              aria-label="搜索"
+              placeholder="搜一首歌，遇见好心情"
+              aria-label="搜索歌曲、歌手"
               aria-autocomplete="list"
-              aria-expanded={suggestOpen && (keyword.trim() ? suggests.length > 0 : history.length > 0)}
+              aria-expanded={showPanel}
             />
-            <button type="submit">搜索</button>
           </form>
-          {suggestOpen && (keyword.trim() ? suggests.length > 0 : history.length > 0) ? (
-            <ul className="suggest-list header-suggest" role="listbox">
-              {keyword.trim() ? null : (
-                <li className="suggest-label">
-                  <span>搜索历史</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      clearSearchHistory()
-                      setHistory([])
-                    }}
-                  >
-                    清空
-                  </button>
-                </li>
+          {showPanel ? (
+            <div className="suggest-panel" role="listbox" aria-label={typing ? '搜索建议' : '搜索历史和热门搜索'}>
+              {typing ? (
+                <ul className="suggest-list">
+                  {suggests.map((item) => (
+                    <li key={item}>
+                      <button type="button" role="option" aria-selected={false} onClick={() => go(item)}>
+                        <Icon name="search" size={14} />
+                        {item}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <>
+                  {history.length ? (
+                    <div className="suggest-block">
+                      <div className="suggest-label">
+                        <span>搜索历史</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearSearchHistory()
+                            setHistory([])
+                          }}
+                        >
+                          清空
+                        </button>
+                      </div>
+                      <div className="chip-row">
+                        {history.slice(0, 8).map((item) => (
+                          <button key={item} type="button" className="chip" onClick={() => go(item)}>
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {hot.length ? (
+                    <div className="suggest-block">
+                      <div className="suggest-label">
+                        <span>大家都在搜</span>
+                      </div>
+                      <ol className="hot-words">
+                        {hot.slice(0, 10).map((item, index) => (
+                          <li key={item}>
+                            <button type="button" role="option" aria-selected={false} onClick={() => go(item)}>
+                              <span className={index < 3 ? 'rank is-top' : 'rank'}>{index + 1}</span>
+                              {item}
+                            </button>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  ) : null}
+                </>
               )}
-              {(keyword.trim() ? suggests : history).map((item) => (
-                <li key={item}>
-                  <button type="button" role="option" onClick={() => go(item)}>
-                    {item}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            </div>
           ) : null}
         </div>
-        <a className="header-search" href="#/search" aria-label="搜索">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <circle cx="11" cy="11" r="7" />
-            <path d="m20 20-3.5-3.5" strokeLinecap="round" />
-          </svg>
+        <a className={route.name === 'mine' ? 'header-mine active' : 'header-mine'} href="#/mine" aria-label="我的音乐">
+          <span className="header-avatar">
+            <Icon name="user" size={16} />
+          </span>
+          <span className="header-mine-text">{nickname || '我的音乐'}</span>
         </a>
         <button
           type="button"
@@ -164,15 +188,7 @@ export function SiteHeader({ route }: { route: Route }) {
           aria-label={open ? '关闭菜单' : '打开菜单'}
           onClick={() => setOpen((value) => !value)}
         >
-          {open ? (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
-            </svg>
-          ) : (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
-            </svg>
-          )}
+          <Icon name={open ? 'close' : 'menu'} />
         </button>
       </div>
     </header>

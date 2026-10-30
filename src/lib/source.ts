@@ -4,7 +4,7 @@ export const useProxy = env.VITE_USE_PROXY === 'true'
 
 export const API_BASE = '/api-fmusic-pomelo7-server'
 
-type Channel = 'search' | 'openapi' | 'img' | 'comment' | 'nmobi'
+type Channel = 'search' | 'openapi' | 'img' | 'comment' | 'nmobi' | 'wapi'
 
 function directBase(raw: string | undefined, fallback: string): string {
   const base = (raw || fallback).replace(/\/$/, '')
@@ -19,6 +19,7 @@ const DIRECT: Record<Exclude<Channel, 'nmobi'>, string> = {
   openapi: directBase(env.VITE_KW_OPENAPI_TARGET, 'https://kuwo.cn'),
   img: directBase(env.VITE_KW_IMG_TARGET, 'https://img1.kuwo.cn'),
   comment: directBase(env.VITE_KW_COMMENT_TARGET, 'https://ncomment.kuwo.cn'),
+  wapi: directBase(env.VITE_KW_WAPI_TARGET, 'https://wapi.kuwo.cn'),
 }
 
 const PROXY: Record<Channel, string> = {
@@ -27,6 +28,7 @@ const PROXY: Record<Channel, string> = {
   img: `${API_BASE}/kw-img`,
   comment: `${API_BASE}/kw-comment`,
   nmobi: `${API_BASE}/kw-nmobi`,
+  wapi: `${API_BASE}/kw-wapi`,
 }
 
 /** 直连歌词。openapi 不回跨域头，这个地址会。 */

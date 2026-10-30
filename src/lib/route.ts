@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 
 export type RouteName =
+  | 'home'
   | 'discover'
+  | 'daily'
   | 'toplist'
   | 'playlists'
   | 'playlist'
@@ -9,9 +11,13 @@ export type RouteName =
   | 'artist'
   | 'albums'
   | 'album'
+  | 'song'
+  | 'radio'
+  | 'community'
+  | 'vip'
+  | 'mine'
   | 'download'
   | 'about'
-  | 'favorites'
   | 'search'
   | 'notfound'
 
@@ -19,10 +25,12 @@ export type Route = {
   name: RouteName
   id?: string
   q: string
-  tag: string
   page: number
+  params: Record<string, string>
   key: string
 }
+
+export const HOME_HASH = '#/home'
 
 export function searchHash(q: string, page = 1) {
   const params = new URLSearchParams()
@@ -33,6 +41,18 @@ export function searchHash(q: string, page = 1) {
   return qs ? `#/search?${qs}` : '#/search'
 }
 
+/** 拼带查询参数的地址，空值和第 1 页不写进去。 */
+export function hashWith(path: string, query: Record<string, string | number | undefined>) {
+  const params = new URLSearchParams()
+  for (const [name, value] of Object.entries(query)) {
+    if (value === undefined || value === '') continue
+    if (name === 'page' && Number(value) <= 1) continue
+    params.set(name, String(value))
+  }
+  const qs = params.toString()
+  return qs ? `#${path}?${qs}` : `#${path}`
+}
+
 function parsePage(value: string | null) {
   const page = Number(value)
   if (!Number.isInteger(page) || page < 1) return 1
@@ -40,7 +60,9 @@ function parsePage(value: string | null) {
 }
 
 const KNOWN = new Set<RouteName>([
+  'home',
   'discover',
+  'daily',
   'toplist',
   'playlists',
   'playlist',
@@ -48,11 +70,21 @@ const KNOWN = new Set<RouteName>([
   'artist',
   'albums',
   'album',
+  'song',
+  'radio',
+  'community',
+  'vip',
+  'mine',
   'download',
   'about',
   'search',
-  'favorites',
 ])
+
+const ALIAS: Record<string, RouteName> = {
+  favorites: 'mine',
+}
+
+const NEED_ID = new Set<RouteName>(['playlist', 'artist', 'album', 'song'])
 
 function decodePart(part: string) {
   try {
@@ -63,23 +95,21 @@ function decodePart(part: string) {
 }
 
 export function parseHash(hash: string): Route {
-  const raw = hash.replace(/^#/, '') || '/discover'
+  const raw = hash.replace(/^#/, '') || '/home'
   const qIndex = raw.indexOf('?')
   const path = qIndex >= 0 ? raw.slice(0, qIndex) : raw
   const query = qIndex >= 0 ? raw.slice(qIndex + 1) : ''
-  const params = new URLSearchParams(query)
+  const search = new URLSearchParams(query)
+  const params = Object.fromEntries(search.entries())
   const parts = path.split('/').filter(Boolean).map(decodePart)
-  const head = parts[0] || 'discover'
+  const head = parts[0] || 'home'
+  const name = ALIAS[head] ?? (head as RouteName)
   const id = parts[1]
-  const q = params.get('q') ?? ''
-  const tag = params.get('tag') ?? ''
-  const page = parsePage(params.get('page'))
-  const key = `${head}/${id ?? ''}?q=${q}&tag=${tag}&page=${page}`
-  if (!KNOWN.has(head as RouteName)) return { name: 'notfound', q, tag, page, key }
-  if ((head === 'playlist' || head === 'artist' || head === 'album') && !id) {
-    return { name: 'notfound', q, tag, page, key }
-  }
-  return { name: head as RouteName, id, q, tag, page, key }
+  const q = search.get('q') ?? ''
+  const page = parsePage(search.get('page'))
+  const key = `${name}/${id ?? ''}?${search.toString()}`
+  if (!KNOWN.has(name) || (NEED_ID.has(name) && !id)) return { name: 'notfound', q, page, params, key }
+  return { name, id, q, page, params, key }
 }
 
 export function useRoute() {
@@ -88,7 +118,7 @@ export function useRoute() {
   useEffect(() => {
     const sync = () => setRoute(parseHash(window.location.hash))
     window.addEventListener('hashchange', sync)
-    if (!window.location.hash) window.location.replace('#/discover')
+    if (!window.location.hash) window.location.replace(HOME_HASH)
     return () => window.removeEventListener('hashchange', sync)
   }, [])
 

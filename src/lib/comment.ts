@@ -164,13 +164,14 @@ async function readRows(url: string) {
   return { rows: data.rows ?? [], total: Number(data.total) || (data.rows ?? []).length }
 }
 
-async function fetchPage(rid: string, page: number, rows: number, type: 'get_comment' | 'get_rec_comment') {
+/** digest：15 是单曲，8 是歌单。 */
+async function fetchPage(rid: string, page: number, rows: number, type: 'get_comment' | 'get_rec_comment', digest = '15') {
   const qs = new URLSearchParams({
     type,
     f: 'web',
     page: String(page),
     rows: String(rows),
-    digest: '15',
+    digest,
     sid: rid,
     uid: '0',
     prod: 'newWeb',
@@ -191,6 +192,30 @@ export function fetchComments(rid: string, page = 1, rows = 20) {
     list: flatComments(pageData.rows),
     total: pageData.total,
     size: pageData.rows.length,
+  }))
+}
+
+const hotCache = new Map<string, Promise<SongComment[]>>()
+
+/** 单曲热评，按点赞从高到低；没有热评时是空数组。 */
+export function fetchHotComments(rid: string, rows = 10) {
+  const key = `${rid}:${rows}`
+  const cached = hotCache.get(key)
+  if (cached) return cached
+  const job = fetchPage(rid, 1, rows, 'get_rec_comment')
+    .then((page) => ownComments(page.rows).sort((left, right) => right.likes - left.likes))
+    .catch((error: unknown) => {
+      hotCache.delete(key)
+      throw error
+    })
+  hotCache.set(key, job)
+  return job
+}
+
+export function fetchPlaylistComments(pid: string, page = 1, rows = 10) {
+  return fetchPage(pid, page, rows, 'get_comment', '8').then((pageData) => ({
+    list: ownComments(pageData.rows),
+    total: pageData.total,
   }))
 }
 

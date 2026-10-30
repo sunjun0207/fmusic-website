@@ -45,7 +45,7 @@ export function PlayQueue({ open, queue, recent, currentId, onClose, onPickQueue
   if (!open) return null
 
   const items = tab === 'queue' ? queue : recent
-  const empty = tab === 'queue' ? '还没有正在播放的歌曲' : '还没有最近播放'
+  const empty = tab === 'queue' ? '这里还没有音乐，去收藏一些喜欢的歌吧' : '还没有播放记录，听过的歌会留在这里'
 
   return (
     <div className="queue-overlay" onClick={onClose}>

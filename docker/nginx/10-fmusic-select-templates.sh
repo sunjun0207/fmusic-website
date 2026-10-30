@@ -9,7 +9,7 @@ SSL_DIR=/etc/nginx/ssl
 log() { echo "[fmusic-website] $*"; }
 die() { echo "[fmusic-website] ERROR: $*" >&2; exit 1; }
 
-required="VITE_KW_SEARCH_TARGET VITE_KW_OPENAPI_TARGET VITE_KW_NMOBI_TARGET VITE_KW_IMG_TARGET VITE_KW_CDN_TARGET VITE_KW_COMMENT_TARGET"
+required="VITE_KW_SEARCH_TARGET VITE_KW_OPENAPI_TARGET VITE_KW_NMOBI_TARGET VITE_KW_IMG_TARGET VITE_KW_CDN_TARGET VITE_KW_COMMENT_TARGET VITE_KW_WAPI_TARGET"
 for v in $required; do
   eval "val=\${$v:-}"
   [ -n "$val" ] || die "缺少环境变量 $v（compose 需通过 env_file 加载 .env.dev / .env.test / .env.pro）"
@@ -20,7 +20,7 @@ for v in $required; do
 done
 
 mkdir -p "$TEMPLATES" "$SNIPPETS"
-whitelist='${VITE_KW_SEARCH_TARGET} ${VITE_KW_OPENAPI_TARGET} ${VITE_KW_NMOBI_TARGET} ${VITE_KW_IMG_TARGET} ${VITE_KW_CDN_TARGET} ${VITE_KW_COMMENT_TARGET}'
+whitelist='${VITE_KW_SEARCH_TARGET} ${VITE_KW_OPENAPI_TARGET} ${VITE_KW_NMOBI_TARGET} ${VITE_KW_IMG_TARGET} ${VITE_KW_CDN_TARGET} ${VITE_KW_COMMENT_TARGET} ${VITE_KW_WAPI_TARGET}'
 envsubst "$whitelist" \
   < "$AVAILABLE/app-locations.conf.template" \
   > "$SNIPPETS/app-locations.conf"

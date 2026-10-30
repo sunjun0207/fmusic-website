@@ -13,6 +13,9 @@ export type MusicItem = {
   mvId?: string
   mvFormats?: string[]
   mvPic?: string
+  artistId?: string
+  albumId?: string
+  releaseDate?: string
 }
 
 export type SearchPageResult = {
@@ -79,6 +82,8 @@ function mapSearchItem(raw: Record<string, unknown>): MusicItem | null {
   const mvId = songMvId(raw)
   const mvFormats = songMvFormats(raw)
   const images = collectImages(image, String(pick(raw, 'web_artistpic_short') ?? ''), mvPic)
+  const artistId = String(pick(raw, 'ARTISTID', 'artistid') ?? '')
+  const albumId = String(pick(raw, 'ALBUMID', 'albumid') ?? '')
   return {
     id,
     title,
@@ -91,6 +96,8 @@ function mapSearchItem(raw: Record<string, unknown>): MusicItem | null {
     mvId: mvId || undefined,
     mvFormats,
     mvPic: mvPic || undefined,
+    artistId: Number(artistId) > 0 ? artistId : undefined,
+    albumId: Number(albumId) > 0 ? albumId : undefined,
   }
 }
 
@@ -100,11 +107,8 @@ export function coverUrl(path?: string, kind: 'album' | 'artist' = 'album') {
     try {
       const url = new URL(path)
       if (url.hostname.includes('kuwo.cn')) {
-        if (url.hostname.startsWith('img4.') || url.pathname.includes('/wmvpic/')) {
-          url.protocol = 'https:'
-          return url.toString()
-        }
-        if (!useProxy) {
+        // img4 和 zimg 上的图在 img1 没有副本；kwcdn 的 https 证书对不上域名，统一换到 img1 取。
+        if (url.hostname.startsWith('img4.') || url.pathname.includes('/wmvpic/') || !url.pathname.startsWith('/star/')) {
           url.protocol = 'https:'
           return url.toString()
         }
@@ -130,6 +134,11 @@ export const POSTER_SIZE = { sd: 300, hd: 500, fhd: 700 } as const
 export function withCoverSize(url: string, size: number) {
   if (!url) return ''
   return url.replace(/\/(120|300|500|700|800)(?=\/)/g, `/${size}`)
+}
+
+/** 列表里的小图：专辑封面路径带尺寸时换成小号，省流量。 */
+export function thumbUrl(path: string | undefined, size = 120) {
+  return withCoverSize(coverUrl(path), size)
 }
 
 export function songPosters(song?: Pick<MusicItem, 'image' | 'images'> | null, size: number = POSTER_SIZE.fhd) {

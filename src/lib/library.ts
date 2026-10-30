@@ -15,7 +15,24 @@ const KEYS = {
   mvBrightness: 'fmusic_website_mv_brightness',
   danmaku: 'fmusic_website_danmaku',
   searchHistory: 'fmusic_website_search_history',
+  myPlaylists: 'fmusic_website_my_playlists',
+  playStats: 'fmusic_website_play_stats',
+  nickname: 'fmusic_website_nickname',
 } as const
+
+const listeners = new Set<() => void>()
+
+/** 收藏、最近播放、自建歌单、昵称变了都会通知，页面据此刷新。 */
+export function onLibraryChange(listener: () => void) {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
+function changed() {
+  listeners.forEach((listener) => listener())
+}
 
 export type PictureQuality = 'sd' | 'hd' | 'fhd'
 
@@ -81,11 +98,28 @@ export function getRecentPlays(): MusicItem[] {
   return readJson<MusicItem[]>(KEYS.recentPlays, []).map(presentSong)
 }
 
+export type PlayStats = { count: number; since: number }
+
+export function getPlayStats(): PlayStats {
+  const stats = readJson<Partial<PlayStats>>(KEYS.playStats, {})
+  const since = Number(stats.since) || Date.now()
+  if (!stats.since) writeJson(KEYS.playStats, { count: Number(stats.count) || 0, since })
+  return { count: Number(stats.count) || 0, since }
+}
+
 export function addRecentPlay(item: MusicItem) {
   if (!item.id) return
   const list = getRecentPlays().filter((song) => song.id !== item.id)
   list.unshift(item)
   writeJson(KEYS.recentPlays, list.slice(0, 40))
+  const stats = getPlayStats()
+  writeJson(KEYS.playStats, { ...stats, count: stats.count + 1 })
+  changed()
+}
+
+export function clearRecentPlays() {
+  writeJson(KEYS.recentPlays, [])
+  changed()
 }
 
 export function getFavorites(): MusicItem[] {
@@ -104,9 +138,11 @@ export function toggleFavorite(item: MusicItem): boolean {
       KEYS.favorites,
       list.filter((song) => song.id !== item.id),
     )
+    changed()
     return false
   }
   writeJson(KEYS.favorites, [item, ...list].slice(0, 200))
+  changed()
   return true
 }
 
@@ -115,10 +151,65 @@ export function removeFavorite(id: string) {
     KEYS.favorites,
     getFavorites().filter((song) => song.id !== id),
   )
+  changed()
 }
 
 export function clearFavorites() {
   writeJson(KEYS.favorites, [])
+  changed()
+}
+
+export type MyPlaylist = { id: string; name: string; songs: MusicItem[]; created: number }
+
+export function getMyPlaylists(): MyPlaylist[] {
+  return readJson<MyPlaylist[]>(KEYS.myPlaylists, [])
+    .filter((item) => item && item.id && Array.isArray(item.songs))
+    .map((item) => ({ ...item, name: plainText(item.name) || '我的专属歌单', songs: item.songs.map(presentSong) }))
+}
+
+function saveMyPlaylists(list: MyPlaylist[]) {
+  writeJson(KEYS.myPlaylists, list)
+  changed()
+}
+
+/** 新建歌单；传入歌曲时就是把整张歌单收进「我的音乐」。 */
+export function createMyPlaylist(name: string, songs: MusicItem[] = []): MyPlaylist {
+  const unique = new Map(songs.filter((song) => song.id).map((song) => [song.id, song]))
+  const item: MyPlaylist = {
+    id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    name: plainText(name).slice(0, 40) || '我的专属歌单',
+    songs: [...unique.values()].slice(0, 500),
+    created: Date.now(),
+  }
+  saveMyPlaylists([item, ...getMyPlaylists()])
+  return item
+}
+
+export function deleteMyPlaylist(id: string) {
+  saveMyPlaylists(getMyPlaylists().filter((item) => item.id !== id))
+}
+
+/** 已经在歌单里时返回 false，不重复添加。 */
+export function addToMyPlaylist(id: string, song: MusicItem): boolean {
+  const list = getMyPlaylists()
+  const target = list.find((item) => item.id === id)
+  if (!target || !song.id || target.songs.some((item) => item.id === song.id)) return false
+  target.songs = [song, ...target.songs].slice(0, 500)
+  saveMyPlaylists(list)
+  return true
+}
+
+export function removeFromMyPlaylist(id: string, songId: string) {
+  saveMyPlaylists(getMyPlaylists().map((item) => (item.id === id ? { ...item, songs: item.songs.filter((song) => song.id !== songId) } : item)))
+}
+
+export function getNickname() {
+  return plainText(localStorage.getItem(KEYS.nickname) ?? '').slice(0, 20)
+}
+
+export function saveNickname(name: string) {
+  localStorage.setItem(KEYS.nickname, plainText(name).slice(0, 20))
+  changed()
 }
 
 export function getPlayMode(): PlayMode {

@@ -1,43 +1,39 @@
-import { charts, getAlbum, getArtist, getChart, getPlaylist } from '../data/catalog'
-import type { Route } from './route'
-import { PRODUCT } from './site'
+import { useEffect } from 'react'
+import type { Route, RouteName } from './route'
+import { PRODUCT, SLOGAN } from './site'
+
+const NAMES: Record<RouteName, string> = {
+  home: '',
+  discover: '发现音乐',
+  daily: '每日推荐',
+  toplist: '排行榜',
+  playlists: '歌单',
+  playlist: '歌单',
+  artists: '歌手',
+  artist: '歌手',
+  albums: '新碟上架',
+  album: '专辑',
+  song: '歌曲',
+  radio: '音乐电台',
+  community: '音乐社区',
+  vip: '会员中心',
+  mine: '我的音乐',
+  download: '听歌说明',
+  about: '关于音浪',
+  search: '搜索',
+  notfound: '页面走丢了',
+}
 
 export function documentTitle(route: Route) {
-  const base = PRODUCT
-  switch (route.name) {
-    case 'discover':
-      return `${base} - 发现音乐`
-    case 'toplist': {
-      const chart = (route.id ? getChart(route.id) : undefined) ?? charts[0]
-      return chart ? `${chart.title} - 排行榜 - ${base}` : `排行榜 - ${base}`
-    }
-    case 'playlists':
-      return `歌单 - ${base}`
-    case 'playlist': {
-      const item = route.id ? getPlaylist(route.id) : undefined
-      return item ? `${item.title} - 歌单 - ${base}` : `歌单 - ${base}`
-    }
-    case 'artists':
-      return `歌手 - ${base}`
-    case 'artist': {
-      const item = route.id ? getArtist(route.id) : undefined
-      return item ? `${item.name} - 歌手 - ${base}` : `歌手 - ${base}`
-    }
-    case 'albums':
-      return `新碟上架 - ${base}`
-    case 'album': {
-      const item = route.id ? getAlbum(route.id) : undefined
-      return item ? `${item.title} - 专辑 - ${base}` : `专辑 - ${base}`
-    }
-    case 'download':
-      return `下载客户端 - ${base}`
-    case 'about':
-      return `关于 - ${base}`
-    case 'favorites':
-      return `收藏 - ${base}`
-    case 'search':
-      return route.q ? `搜索 ${route.q} - ${base}` : `搜索 - ${base}`
-    default:
-      return `未找到页面 - ${base}`
-  }
+  if (route.name === 'home') return `${PRODUCT} - ${SLOGAN.replace(/。$/, '')}`
+  if (route.name === 'search' && route.q) return `搜索 ${route.q} - ${PRODUCT}`
+  return `${NAMES[route.name]} - ${PRODUCT}`
+}
+
+/** 详情页拿到名字后再改标题；App 用 layout effect 先写通用标题，这里每次渲染后都晚一步覆盖回来。 */
+export function usePageTitle(...parts: (string | undefined)[]) {
+  const text = parts.filter(Boolean).join(' - ')
+  useEffect(() => {
+    if (text) document.title = `${text} - ${PRODUCT}`
+  })
 }

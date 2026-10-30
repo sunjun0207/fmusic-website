@@ -1,21 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { EmptyState } from '../components/EmptyState'
+import { EmptyState, ErrorState, LoadingState } from '../components/EmptyState'
+import { Icon } from '../components/Icon'
+import { Pager } from '../components/Pager'
 import { usePlayer } from '../components/PlayerProvider'
-import { hotSearches } from '../data/catalog'
+import { SongList } from '../components/SongList'
+import { FALLBACK_KEYWORDS } from '../data/brand'
+import { fetchHotKeywords, NETWORK_TIP } from '../lib/kuwo'
 import { addSearchHistory, clearSearchHistory, getSearchHistory, removeSearchHistory } from '../lib/library'
-import { searchHash } from '../lib/route'
 import { getMediaUrl } from '../lib/play'
-import {
-  coverUrl,
-  formatDuration,
-  isSongWithoutMv,
-  peekSearch,
-  rememberNoMv,
-  searchKey,
-  searchMusic,
-  subscribeNoMv,
-  type MusicItem,
-} from '../lib/search'
+import { searchHash } from '../lib/route'
+import { isSongWithoutMv, peekSearch, rememberNoMv, searchKey, searchMusic, subscribeNoMv, type MusicItem } from '../lib/search'
+import { useRemote } from '../lib/useRemote'
 
 const PAGE_SIZE = 20
 const FOCUS_KEY = 'fmusic_website_search_focus'
@@ -43,24 +38,21 @@ function revealSearchRow(id: string) {
   if (!visible) row.scrollIntoView({ block: 'center', behavior: 'smooth' })
 }
 
-function pagerPages(current: number, totalPages: number) {
-  const wanted = new Set<number>([1, totalPages])
-  for (let n = current - 2; n <= current + 2; n += 1) wanted.add(n)
-  return [...wanted].filter((n) => n >= 1 && n <= totalPages).sort((a, b) => a - b)
-}
-
 export function SearchPage({ q, page }: { q: string; page: number }) {
   const [input, setInput] = useState(q)
   const [songs, setSongs] = useState<MusicItem[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [tick, setTick] = useState(0)
   const [suggests, setSuggests] = useState<string[]>([])
   const [history, setHistory] = useState<string[]>(() => getSearchHistory())
   const [focused, setFocused] = useState(false)
   const blurTimer = useRef(0)
   const probedMv = useRef(new Set<string>())
   const player = usePlayer()
+  const hot = useRemote('hot-keywords', fetchHotKeywords)
+  const hotWords = hot.data?.length ? hot.data : hot.error ? FALLBACK_KEYWORDS : []
 
   useEffect(
     () =>
@@ -128,11 +120,11 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
         setSongs(result.list)
         setTotal(result.total || result.list.length)
       })
-      .catch((reason: unknown) => {
+      .catch(() => {
         if (cancel) return
         setSongs([])
         setTotal(0)
-        setError(reason instanceof Error ? reason.message : '搜索失败')
+        setError(NETWORK_TIP)
       })
       .finally(() => {
         if (!cancel) setLoading(false)
@@ -140,7 +132,7 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
     return () => {
       cancel = true
     }
-  }, [q, page])
+  }, [q, page, tick])
 
   useEffect(() => {
     if (!q.trim() || !total) return
@@ -155,7 +147,7 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
     setSuggests([])
   }
 
-  const playSong = (song: MusicItem, kind: 'audio' | 'mv' = 'audio') => {
+  const playSong = (song: MusicItem, kind: 'audio' | 'mv') => {
     saveSearchFocus(q, song.id)
     player.play(song, kind, kind === 'audio' ? songs : undefined)
   }
@@ -168,21 +160,22 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
   }, [player.playingId, songs, q, page])
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  const pages = pagerPages(page, totalPages)
 
   return (
     <>
       <header className="search-hero">
-        <h1>搜索</h1>
-        <p>搜歌名或歌手。点击歌曲即可播放，带 MV 的曲目可以看视频。</p>
+        <p className="eyebrow">SEARCH</p>
+        <h1>搜一首歌，遇见好心情</h1>
         <form
           role="search"
+          className="search-big"
           onSubmit={(event) => {
             event.preventDefault()
             go(input)
           }}
         >
           <div className="search-box">
+            <Icon name="search" size={18} className="search-icon" />
             <input
               value={input}
               onChange={(event) => setInput(event.target.value)}
@@ -194,16 +187,17 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
               onBlur={() => {
                 blurTimer.current = window.setTimeout(() => setFocused(false), 120)
               }}
-              placeholder="歌曲、歌手或专辑"
+              placeholder="歌名、歌手或专辑"
               aria-label="搜索关键词"
               aria-autocomplete="list"
               aria-expanded={focused && suggests.length > 0}
             />
             {suggests.length ? (
-              <ul className="suggest-list">
+              <ul className="suggest-list is-floating">
                 {suggests.map((item) => (
                   <li key={item}>
                     <button type="button" onClick={() => go(item)}>
+                      <Icon name="search" size={14} />
                       {item}
                     </button>
                   </li>
@@ -211,198 +205,87 @@ export function SearchPage({ q, page }: { q: string; page: number }) {
               </ul>
             ) : null}
           </div>
-          <button className="btn" type="submit">
+          <button className="btn btn-lg" type="submit">
             搜索
           </button>
         </form>
-        <div className="search-history">
-          <div className="search-history-head">
-            <span>搜索历史</span>
-            {history.length ? (
-              <button
-                type="button"
-                onClick={() => {
-                  clearSearchHistory()
-                  setHistory([])
-                }}
-              >
-                清空
-              </button>
-            ) : null}
-          </div>
-          {history.length ? (
-            <div className="chips">
-              {history.map((item) => (
-                <span key={item} className="history-chip">
-                  <a className="chip" href={searchHash(item)}>
-                    {item}
-                  </a>
-                  <button
-                    type="button"
-                    aria-label={`删除 ${item}`}
-                    onClick={() => {
-                      removeSearchHistory(item)
-                      setHistory(getSearchHistory())
-                    }}
-                  >
-                    ×
-                  </button>
-                </span>
+        <div className="search-words">
+          <div className="search-words-block">
+            <div className="search-words-head">
+              <span>大家都在搜</span>
+            </div>
+            <div className="chip-row">
+              {hotWords.slice(0, 12).map((item, index) => (
+                <a key={item} className={index < 3 ? 'chip is-hot' : 'chip'} href={searchHash(item)}>
+                  {index < 3 ? <Icon name="fire" size={13} /> : null}
+                  {item}
+                </a>
               ))}
             </div>
-          ) : (
-            <p className="meta">搜过的词会留在这里。</p>
-          )}
-        </div>
-        <p className="search-hot-label">热门搜索</p>
-        <div className="chips">
-          {hotSearches.map((item) => (
-            <a key={item} className="chip" href={searchHash(item)}>
-              {item}
-            </a>
-          ))}
+          </div>
+          <div className="search-words-block">
+            <div className="search-words-head">
+              <span>搜索历史</span>
+              {history.length ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearSearchHistory()
+                    setHistory([])
+                  }}
+                >
+                  清空
+                </button>
+              ) : null}
+            </div>
+            {history.length ? (
+              <div className="chip-row">
+                {history.map((item) => (
+                  <span key={item} className="history-chip">
+                    <a className="chip" href={searchHash(item)}>
+                      {item}
+                    </a>
+                    <button
+                      type="button"
+                      aria-label={`删除 ${item}`}
+                      onClick={() => {
+                        removeSearchHistory(item)
+                        setHistory(getSearchHistory())
+                      }}
+                    >
+                      <Icon name="close" size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="meta">搜过的词会留在这里。</p>
+            )}
+          </div>
         </div>
       </header>
 
       {!q ? (
-        <EmptyState title="先写一个歌名，或点上面的词。" hint="例如：夜曲、周杰伦、张杰。" />
+        <EmptyState title="想听什么？写个歌名，或点一个大家都在搜的词。" hint="例如：晴天、周杰伦、孤勇者。" />
       ) : loading && songs.length === 0 ? (
-        <EmptyState title={`正在搜索「${q}」`} />
+        <LoadingState />
       ) : error && songs.length === 0 ? (
-        <EmptyState title="搜索没有完成。" hint={error} />
+        <ErrorState text={error} onRetry={() => setTick((value) => value + 1)} />
       ) : songs.length === 0 ? (
-        <EmptyState title={`没有找到「${q}」。`} hint="换一个歌名或歌手试试。" />
+        <EmptyState title="没找到这首歌，换个关键词试试？" hint="试试只写歌名，或者换成歌手的名字。" />
       ) : (
-        <>
-          <p className="meta">
-            「{q}」共 {total} 首，第 {page} / {totalPages} 页
-            {loading ? ' · 正在更新…' : ''}
-          </p>
-          {player.pending ? <p className="meta">正在获取播放地址…</p> : null}
-          {player.error ? <p className="play-error">{player.error}</p> : null}
-          <div className="table-wrap">
-            <table className="song-table">
-              <thead>
-                <tr>
-                  <th className="col-cover" />
-                  <th>歌曲</th>
-                  <th>歌手</th>
-                  <th className="hide-sm">专辑</th>
-                  <th className="hide-sm">时长</th>
-                  <th className="col-action">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {songs.map((song) => {
-                  const cover = coverUrl(song.image)
-                  const duration = formatDuration(song.duration)
-                  const playing = player.playingId === song.id
-                  return (
-                    <tr
-                      key={song.id}
-                      id={`search-song-${song.id}`}
-                      className={playing ? 'is-playing is-clickable' : 'is-clickable'}
-                      onClick={(event) => {
-                        if ((event.target as HTMLElement).closest('button, a')) return
-                        playSong(song)
-                      }}
-                      onPointerDown={(event) => {
-                        if ((event.target as HTMLElement).closest('button, a')) return
-                        player.warm(song, 'audio')
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault()
-                          playSong(song)
-                        }
-                      }}
-                      tabIndex={0}
-                      aria-label={`播放 ${song.title}`}
-                    >
-                      <td>
-                        {cover ? (
-                          <img className="song-cover" src={cover} alt="" />
-                        ) : (
-                          <span className="song-cover song-cover-empty" />
-                        )}
-                      </td>
-                      <td>
-                        <div className="song-title">
-                          <span>{song.title}</span>
-                          {song.hasMv ? <span className="mv-flag">MV</span> : null}
-                        </div>
-                      </td>
-                      <td>{song.artist}</td>
-                      <td className="hide-sm">{song.album || <span className="muted">—</span>}</td>
-                      <td className="hide-sm">{duration || <span className="muted">—</span>}</td>
-                      <td>
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="text-btn"
-                            disabled={player.pending}
-                            onPointerDown={() => player.warm(song, 'audio')}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              playSong(song)
-                            }}
-                          >
-                            播放歌曲
-                          </button>
-                          {song.hasMv ? (
-                            <button
-                              type="button"
-                              className="text-btn"
-                              disabled={player.pending}
-                              onPointerDown={(event) => {
-                                event.stopPropagation()
-                                player.warm(song, 'mv')
-                              }}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                playSong(song, 'mv')
-                              }}
-                            >
-                              播放MV
-                            </button>
-                          ) : (
-                            <span className="mv-none">暂无MV</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+        <section className="panel">
+          <div className="list-head">
+            <h2>
+              「{q}」的搜索结果
+              <small>
+                共 {total} 首 · 第 {page} / {totalPages} 页{loading ? ' · 正在更新…' : ''}
+              </small>
+            </h2>
           </div>
-          {totalPages > 1 ? (
-            <nav className="pager" aria-label="搜索分页">
-              {page <= 1 ? (
-                <span className="is-disabled">上一页</span>
-              ) : (
-                <a href={searchHash(q, page - 1)}>上一页</a>
-              )}
-              {pages.map((n, index) => {
-                const prev = pages[index - 1]
-                const gap = prev && n - prev > 1
-                return (
-                  <span key={n} className="pager-slot">
-                    {gap ? <span className="pager-gap">…</span> : null}
-                    <a href={searchHash(q, n)} aria-current={n === page ? 'page' : undefined}>
-                      {n}
-                    </a>
-                  </span>
-                )
-              })}
-              {page >= totalPages ? (
-                <span className="is-disabled">下一页</span>
-              ) : (
-                <a href={searchHash(q, page + 1)}>下一页</a>
-              )}
-            </nav>
-          ) : null}
-        </>
+          <SongList songs={songs} start={(page - 1) * PAGE_SIZE} rowIdPrefix="search-song-" onPlay={playSong} />
+          <Pager page={page} totalPages={totalPages} hrefFor={(n) => searchHash(q, n)} label="搜索分页" />
+        </section>
       )}
     </>
   )

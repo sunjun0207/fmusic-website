@@ -2,7 +2,9 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type P
 import { PlayQueue } from './PlayQueue'
 import { CommentPanel } from './CommentPanel'
 import { DanmakuLayer } from './DanmakuLayer'
+import { Icon } from './Icon'
 import { LyricView } from './LyricView'
+import { openPlaylistPicker } from './PlaylistPicker'
 import { fetchComments, fetchDanmaku, formatCommentCount, type SongComment } from '../lib/comment'
 import {
   addRecentPlay,
@@ -36,6 +38,13 @@ import { nextPlayMode, PLAY_MODE_LABEL, resolveAdvance, type AdvanceDirection, t
 import { mediaFilename, pictureFilename, saveMedia, savePicture } from '../lib/saveMedia'
 import { getMediaUrl, getPlayableMvQualities, listedMvQualities, playedAudioProfile, prefetchMedia, sameMediaFile } from '../lib/play'
 import { coverUrl, findPlayable, isSongWithoutMv, POSTER_SIZE, rememberNoMv, songPosters, subscribeNoMv, withCoverSize, type MusicItem } from '../lib/search'
+import { shareSong } from '../lib/share'
+import { toast } from '../lib/toast'
+
+/** 歌曲地址拿不到、音频加载出错时统一的说法；MV 仍然用具体原因（比如没有 MV）。 */
+const PLAY_TIP = '音乐暂时走神了，请稍后再试'
+
+const MODE_ICON = { list: 'repeat', single: 'repeatOne', shuffle: 'shuffle' } as const
 
 type Kind = 'audio' | 'mv'
 type Loaded = { song: MusicItem; url: string }
@@ -896,9 +905,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } catch (reason: unknown) {
       if (ticket !== requestRef.current) return
       if (kind === 'mv') releaseSong()
-      const message = reason instanceof Error ? reason.message : '播放失败'
+      const message = reason instanceof Error ? reason.message : PLAY_TIP
       if (kind === 'mv' && message.includes('没有')) rememberNoMv(song.id)
-      setError(message)
+      setError(kind === 'mv' ? message : PLAY_TIP)
     } finally {
       if (ticket === requestRef.current) setPending(false)
     }
@@ -999,7 +1008,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       .catch((reason: unknown) => {
         if (ticket !== requestRef.current) return
         if (kind === 'mv') releaseSong()
-        setError(reason instanceof Error ? reason.message : '播放失败')
+        setError(kind === 'mv' && reason instanceof Error ? reason.message : PLAY_TIP)
         setPending(false)
       })
   }
@@ -1108,12 +1117,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         if (previousUrl && sameMediaFile(previousUrl, url)) setError('这次换音质后，拿到的还是同一个音频文件。')
       })
-      .catch((reason: unknown) => {
+      .catch(() => {
         if (ticket !== requestRef.current) return
         audioQualityRef.current = previous
         setAudioQuality(previous)
         saveSongQuality(previous)
-        setError(reason instanceof Error ? reason.message : '播放地址获取失败')
+        setError(PLAY_TIP)
         if (!hadAudio) void open(song, 'audio')
       })
       .finally(() => {
@@ -1287,105 +1296,132 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             if (silenceAudioRef.current) return
             advance('ended')
           }}
+          onError={(event) => {
+            const el = event.currentTarget
+            const code = el.error?.code ?? 0
+            if (silenceAudioRef.current || !el.getAttribute('src') || code < 2) return
+            setError(PLAY_TIP)
+          }}
         />
       ) : null}
       {(audio || mv || queued) && (
         <div className="player-stack" ref={stackRef}>
           <div className="player-dock">
-          {dockPosters.length ? (
-            <button type="button" className="song-cover poster-slot" aria-label="查看封面" onClick={() => openCover(dockSong, dockPosters[dockAt])}>
-              {dockPosters.map((url, index) => (
-                <img key={url} src={url} alt="" className={index === dockAt ? 'is-on' : ''} onError={() => hidePoster(url)} />
-              ))}
-            </button>
-          ) : (
-            <span className="song-cover" />
-          )}
-          <div className="player-meta">
-            <strong>{dockSong?.title}</strong>
-            <span>
-              {dockSong?.artist}
-              {activeKind === 'mv' ? ' · MV' : ''}
-            </span>
-          </div>
-          <div className="transport">
-            <button type="button" className="text-btn" onClick={() => advance('prev')} aria-label="上一首">
-              上一首
-            </button>
-            <button type="button" className="icon-btn play-toggle" onClick={toggle} aria-label={paused ? '播放' : '暂停'}>
-              <PlayPauseIcon paused={paused} />
-            </button>
-            <button type="button" className="text-btn" onClick={() => advance('next')} aria-label="下一首">
-              下一首
-            </button>
-            <SeekBar current={current} duration={duration} onScrub={scrub} onScrubEnd={scrubEnd} />
-            <span className="time">
-              {clock(current)} / {clock(duration)}
-            </span>
-          </div>
-          <div className="player-actions">
-            <button
-              type="button"
-              className="text-btn"
-              onClick={cycleMode}
-              aria-label={`循环模式：${PLAY_MODE_LABEL[playMode]}，点击切换`}
-            >
-              {PLAY_MODE_LABEL[playMode]}
-            </button>
-            <button type="button" className="text-btn" onClick={() => setQueueOpen(true)}>
-              播放列表
-            </button>
-            {dockSong?.id ? (
-              <button
-                type="button"
-                className={favOn ? 'text-btn fav-on' : 'text-btn'}
-                onClick={() => toggleSongFavorite(dockSong)}
-                aria-label={favOn ? '取消收藏' : '收藏'}
-              >
-                {favOn ? '已收藏' : '收藏'}
-              </button>
-            ) : null}
-            {activeKind === 'audio' && dockSong ? (
-              <QualitySwitch light label="音质" value={audioQuality} onChange={chooseAudioQuality} />
-            ) : null}
-            {active ? (
-              <button
-                type="button"
-                className="text-btn"
-                disabled={downloading || pending}
-                onClick={() => void download(active, activeKind)}
-              >
-                {downloading ? '下载中…' : '下载'}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className={activeKind !== 'mv' && lyricOpen ? 'text-btn is-on' : 'text-btn'}
-              aria-pressed={activeKind === 'mv' ? undefined : lyricOpen}
-              onClick={() => {
-                if (activeKind === 'mv' && mv) {
-                  setStage('mv')
-                  return
-                }
-                if (audio || queued) setLyricVisible(!showLyricRef.current)
-              }}
-            >
-              {activeKind === 'mv' ? '全屏' : lyricOpen ? '隐藏歌词' : '显示歌词'}
-            </button>
-            {dockSong?.id ? (
-              dockSong.hasMv && noMvTick >= 0 && !isSongWithoutMv(dockSong.id) ? (
-                <button type="button" className="text-btn" disabled={pending} onClick={() => play(dockSong, 'mv')}>
-                  播放MV
+            <div className="dock-song">
+              {dockPosters.length ? (
+                <button type="button" className="song-cover poster-slot" aria-label="查看封面" onClick={() => openCover(dockSong, dockPosters[dockAt])}>
+                  {dockPosters.map((url, index) => (
+                    <img key={url} src={url} alt="" className={index === dockAt ? 'is-on' : ''} onError={() => hidePoster(url)} />
+                  ))}
                 </button>
               ) : (
-                <span className="mv-none">暂无MV</span>
-              )
+                <span className="song-cover" />
+              )}
+              <div className="player-meta">
+                {dockSong?.id ? (
+                  <a className="player-title" href={`#/song/${dockSong.id}`} title={dockSong.title}>
+                    {dockSong.title}
+                  </a>
+                ) : (
+                  <strong className="player-title">{dockSong?.title}</strong>
+                )}
+                <span>
+                  {dockSong?.artist}
+                  {activeKind === 'mv' ? ' · MV' : ''}
+                </span>
+              </div>
+              {dockSong?.id ? (
+                <div className="dock-quick">
+                  <button
+                    type="button"
+                    className={favOn ? 'dock-btn is-loved' : 'dock-btn'}
+                    aria-pressed={favOn}
+                    aria-label="收进我的音乐宇宙"
+                    title={favOn ? '已收进我的音乐宇宙，再点一下移出' : '收进我的音乐宇宙'}
+                    onClick={() => {
+                      toggleSongFavorite(dockSong)
+                      toast(favOn ? '已从我的音乐宇宙移出' : '已收进我的音乐宇宙')
+                    }}
+                  >
+                    <Icon name={favOn ? 'heartFill' : 'heart'} />
+                  </button>
+                  <button type="button" className="dock-btn" aria-label="加入歌单" title="加入歌单" onClick={() => openPlaylistPicker(dockSong)}>
+                    <Icon name="plus" />
+                  </button>
+                  <button type="button" className="dock-btn" aria-label="把这份喜欢分享出去" title="把这份喜欢分享出去" onClick={() => void shareSong(dockSong)}>
+                    <Icon name="share" />
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            <div className="transport">
+              <div className="transport-buttons">
+                <button type="button" className="dock-btn" onClick={cycleMode} aria-label={`循环模式：${PLAY_MODE_LABEL[playMode]}，点击切换`} title={PLAY_MODE_LABEL[playMode]}>
+                  <Icon name={MODE_ICON[playMode]} />
+                </button>
+                <button type="button" className="dock-btn" onClick={() => advance('prev')} aria-label="上一首" title="上一首">
+                  <Icon name="prev" />
+                </button>
+                <button type="button" className="play-toggle" onClick={toggle} aria-label={paused ? '播放这首歌' : '暂停'}>
+                  <PlayPauseIcon paused={paused} />
+                </button>
+                <button type="button" className="dock-btn" onClick={() => advance('next')} aria-label="下一首" title="下一首">
+                  <Icon name="next" />
+                </button>
+                <button
+                  type="button"
+                  className={activeKind !== 'mv' && lyricOpen ? 'dock-btn is-on' : 'dock-btn'}
+                  aria-pressed={activeKind === 'mv' ? undefined : lyricOpen}
+                  aria-label={activeKind === 'mv' ? '全屏看 MV' : lyricOpen ? '隐藏歌词' : '显示歌词'}
+                  title={activeKind === 'mv' ? '全屏看 MV' : lyricOpen ? '隐藏歌词' : '显示歌词'}
+                  onClick={() => {
+                    if (activeKind === 'mv' && mv) {
+                      setStage('mv')
+                      return
+                    }
+                    if (audio || queued) setLyricVisible(!showLyricRef.current)
+                  }}
+                >
+                  <Icon name={activeKind === 'mv' ? 'mv' : 'lyric'} />
+                </button>
+              </div>
+              <div className="transport-seek">
+                <span className="time">{clock(current)}</span>
+                <SeekBar current={current} duration={duration} onScrub={scrub} onScrubEnd={scrubEnd} />
+                <span className="time">{clock(duration)}</span>
+              </div>
+            </div>
+            <div className="player-actions">
+              {activeKind === 'audio' && dockSong ? <QualitySwitch light label="音质" value={audioQuality} onChange={chooseAudioQuality} /> : null}
+              {dockSong?.id && dockSong.hasMv && noMvTick >= 0 && !isSongWithoutMv(dockSong.id) && activeKind !== 'mv' ? (
+                <button type="button" className="dock-btn" disabled={pending} onClick={() => play(dockSong, 'mv')} aria-label="看 MV" title="看 MV">
+                  <Icon name="mv" />
+                </button>
+              ) : null}
+              {active ? (
+                <button
+                  type="button"
+                  className="dock-btn"
+                  disabled={downloading || pending}
+                  onClick={() => void download(active, activeKind)}
+                  aria-label={downloading ? '下载中' : '下载'}
+                  title={downloading ? '下载中…' : '下载'}
+                >
+                  {downloading ? <span className="spinner" aria-hidden="true" /> : <Icon name="download" />}
+                </button>
+              ) : null}
+              <button type="button" className="dock-btn dock-queue" onClick={() => setQueueOpen(true)} aria-label="播放列表" title="播放列表">
+                <Icon name="list" />
+                {queue.length ? <small>{queue.length}</small> : null}
+              </button>
+              <DragMeter label="歌曲音量" value={songVolume} min={0} max={100} icon={<VolumeIcon muted={songVolume === 0} />} onChange={chooseSongVolume} />
+              <DragMeter label="歌曲亮度" value={songBrightness} min={40} max={160} icon={<BrightnessIcon />} onChange={chooseSongBrightness} />
+            </div>
+            {error || pending ? (
+              <p className={error ? 'dock-status is-error' : 'dock-status'} role={error ? 'alert' : 'status'}>
+                {error || '正在为你寻找好声音……'}
+              </p>
             ) : null}
-            <DragMeter label="歌曲音量" value={songVolume} min={0} max={100} icon={<VolumeIcon muted={songVolume === 0} />} onChange={chooseSongVolume} />
-            <DragMeter label="歌曲亮度" value={songBrightness} min={40} max={160} icon={<BrightnessIcon />} onChange={chooseSongBrightness} />
-          </div>
-          {error ? <p className="play-error">{error}</p> : null}
-          {pending ? <p className="meta">正在获取播放地址…</p> : null}
           </div>
         </div>
       )}

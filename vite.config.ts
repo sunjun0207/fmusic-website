@@ -95,6 +95,7 @@ export default defineConfig(({ mode }) => {
       Referer: 'https://www.kuwo.cn/',
       'User-Agent': 'Mozilla/5.0',
     }),
+    '/api-fmusic-pomelo7-server/kw-wapi': proxyRule('/api-fmusic-pomelo7-server/kw-wapi', env.VITE_KW_WAPI_TARGET || 'http://wapi.kuwo.cn'),
   }
 
   return {
