@@ -1464,6 +1464,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             </div>
           </header>
           <div className={`lyric-body${commentsOpen ? ' has-comments' : ''}`}>
+            {danmaku ? <div className="lyric-danmaku">{danmaku}</div> : null}
             <div className={`lyric-disc${paused ? '' : ' is-on'}`}>
               <div className="lyric-poster">
                 <div className="lyric-disc-ring" />
@@ -1497,7 +1498,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                   )}
                 </div>
               </div>
-              {danmaku ? <div className="lyric-danmaku">{danmaku}</div> : null}
               {posters.length > 1 ? (
                 <div className="poster-dots" role="tablist" aria-label="海报">
                   {posters.map((url, index) => (
@@ -1518,7 +1518,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               <QualitySwitch label="清晰度" value={posterQuality} onChange={choosePosterQuality} />
             </div>
             <LyricView lines={lyrics} status={lyricStatus} current={current} onSeek={(time) => seek(time, true)} />
-            {commentsOpen ? <CommentPanel songId={lyricSong.id} /> : null}
+            {commentsOpen ? <CommentPanel songId={lyricSong.id} knownTotal={commentTotal} /> : null}
           </div>
         </div>
       ) : null}

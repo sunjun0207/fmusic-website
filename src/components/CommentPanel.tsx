@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { appendComments, fetchComments, threadComments, type SongComment } from '../lib/comment'
 
 function LikeIcon() {
@@ -33,11 +33,11 @@ function Avatar({ item }: { item: SongComment }) {
   return <img src={item.avatar} alt="" onError={() => setBroken(true)} />
 }
 
-function CommentNode({ item }: { item: SongComment }) {
+function CommentBody({ item, children }: { item: SongComment; children?: ReactNode }) {
   return (
-    <li className="comment-item">
+    <>
       <Avatar item={item} />
-      <div>
+      <div className="comment-body">
         <div className="comment-user">
           <strong>{item.user}</strong>
           <Marks medal={item.medal} medalLevel={item.medalLevel} rank={item.rank} />
@@ -54,19 +54,67 @@ function CommentNode({ item }: { item: SongComment }) {
             <em>{item.replies.length}</em>
           </span>
         </div>
+        {children}
+      </div>
+    </>
+  )
+}
+
+function flattenReplies(items: SongComment[]): SongComment[] {
+  const list: SongComment[] = []
+  const walk = (nodes: SongComment[]) => {
+    nodes.forEach((node) => {
+      list.push(node)
+      if (node.replies.length) walk(node.replies)
+    })
+  }
+  walk(items)
+  return list
+}
+
+function DeeperReplies({ items }: { items: SongComment[] }) {
+  const [open, setOpen] = useState(false)
+  const hidden = flattenReplies(items)
+  if (!hidden.length) return null
+  return (
+    <>
+      <button type="button" className="comment-expand" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        {open ? '收起' : `展开${hidden.length}条评论`}
+      </button>
+      {open ? (
+        <ul className="comment-extra">
+          {hidden.map((reply) => (
+            <li key={reply.id} className="comment-item">
+              <CommentBody item={reply} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </>
+  )
+}
+
+function CommentNode({ item }: { item: SongComment }) {
+  return (
+    <li className="comment-item">
+      <CommentBody item={item}>
         {item.replies.length ? (
           <ul className="comment-children">
             {item.replies.map((reply) => (
-              <CommentNode key={reply.id} item={reply} />
+              <li key={reply.id} className="comment-item">
+                <CommentBody item={reply}>
+                  <DeeperReplies items={reply.replies} />
+                </CommentBody>
+              </li>
             ))}
           </ul>
         ) : null}
-      </div>
+      </CommentBody>
     </li>
   )
 }
 
-export function CommentPanel({ songId }: { songId: string }) {
+export function CommentPanel({ songId, knownTotal = null }: { songId: string; knownTotal?: number | null }) {
   const [flat, setFlat] = useState<SongComment[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -84,6 +132,10 @@ export function CommentPanel({ songId }: { songId: string }) {
     setPage(1)
     setSeen(0)
     setMore(false)
+    if (knownTotal === 0) {
+      setStatus('empty')
+      return
+    }
     setStatus('loading')
     fetchComments(songId, 1)
       .then((result) => {
@@ -91,7 +143,7 @@ export function CommentPanel({ songId }: { songId: string }) {
         setFlat(result.list)
         setTotal(result.total)
         setSeen(result.size)
-        setStatus(result.list.length ? 'ready' : 'empty')
+        setStatus(result.total > 0 && result.list.length ? 'ready' : 'empty')
       })
       .catch(() => {
         if (!cancel) setStatus('error')
@@ -99,7 +151,7 @@ export function CommentPanel({ songId }: { songId: string }) {
     return () => {
       cancel = true
     }
-  }, [songId])
+  }, [songId, knownTotal])
 
   const loadMore = () => {
     const owner = songId
@@ -125,8 +177,8 @@ export function CommentPanel({ songId }: { songId: string }) {
         <strong>评论</strong>
         {total > 0 ? <span>{total}</span> : null}
       </header>
-      {status === 'loading' ? <p className="comment-state">正在加载大家的故事……</p> : null}
-      {status === 'empty' ? <p className="comment-state">还没有人留言，这首歌在等第一个懂它的人。</p> : null}
+      {status === 'loading' ? <p className="comment-state">正在加载评论……</p> : null}
+      {status === 'empty' ? <p className="comment-state">暂无评论</p> : null}
       {status === 'error' ? <p className="comment-state">网络开了个小差，稍后再来看评论吧</p> : null}
       {status === 'ready' ? (
         <ul className="comment-list">

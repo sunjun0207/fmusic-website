@@ -1,14 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SongComment } from '../lib/comment'
 
-type Flying = { key: string; text: string; lane: number; speed: number; delay: number; gradient: string }
+type Flying = { key: string; text: string; lane: number; speed: number; delay: number; tone: number }
 
-const LANES = 2
-const GRADIENTS = [
-  'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.95) 14%, rgba(176,255,238,0.92) 50%, rgba(255,255,255,0.9) 86%, rgba(255,255,255,0) 100%)',
-  'linear-gradient(90deg, rgba(255,232,186,0) 0%, rgba(255,246,220,0.95) 16%, rgba(255,255,255,0.9) 54%, rgba(255,210,140,0.88) 84%, rgba(255,232,186,0) 100%)',
-  'linear-gradient(90deg, rgba(210,232,255,0) 0%, rgba(255,255,255,0.94) 18%, rgba(186,216,255,0.9) 58%, rgba(255,255,255,0.86) 84%, rgba(210,232,255,0) 100%)',
-]
+const LANES = 3
+const TONES = 3
 
 function brief(text: string) {
   const line = text.replace(/\s+/g, ' ').trim()
@@ -54,7 +50,7 @@ export function DanmakuLayer({
         lane,
         speed,
         delay,
-        gradient: GRADIENTS[cursor.current % GRADIENTS.length],
+        tone: cursor.current % TONES,
       }
     }
     if (!seeded.current) {
@@ -81,11 +77,10 @@ export function DanmakuLayer({
       {flying.map((item) => (
         <span
           key={item.key}
-          className="danmaku-item"
+          className={`danmaku-item tone-${item.tone}`}
           style={{
-            top: 2 + item.lane * 26,
-            backgroundImage: item.gradient,
-            animationDuration: `${item.speed}s`,
+            top: 4 + item.lane * 30,
+            ['--fly' as string]: `${item.speed}s`,
             animationDelay: item.delay ? `${item.delay}s` : undefined,
           }}
           onAnimationEnd={() => setFlying((list) => list.filter((entry) => entry.key !== item.key))}

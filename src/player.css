@@ -1030,6 +1030,7 @@ a.player-title:hover {
 }
 
 .lyric-screen-bar {
+  z-index: 3;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -1117,14 +1118,18 @@ a.player-title:hover {
 }
 
 .lyric-danmaku {
-  position: relative;
-  width: min(320px, 32vw);
-  height: 58px;
-  margin-top: 2px;
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  top: 4px;
+  height: 96px;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .lyric-danmaku .danmaku-layer {
-  height: 58px;
+  height: 100%;
 }
 
 .danmaku-switch i {
@@ -1497,7 +1502,7 @@ a.player-title:hover {
 .comment-state,
 .comment-item time,
 .comment-item em {
-  color: rgba(255, 255, 255, 0.62);
+  color: var(--text-2);
   font-size: 12px;
   font-style: normal;
 }
@@ -1513,6 +1518,7 @@ a.player-title:hover {
   margin: 0;
   padding: 0 8px 0 0;
   list-style: none;
+  overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
 }
@@ -1526,6 +1532,11 @@ a.player-title:hover {
   grid-template-columns: 36px minmax(0, 1fr);
   gap: 10px;
   padding: 10px 0;
+  min-width: 0;
+}
+
+.comment-body {
+  min-width: 0;
 }
 
 .comment-item img,
@@ -1552,7 +1563,7 @@ a.player-title:hover {
 
 .comment-item p {
   margin: 6px 0 0;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--text);
   font-size: 14px;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -1600,7 +1611,7 @@ a.player-title:hover {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-2);
   font-size: 12px;
   font-style: normal;
 }
@@ -1616,17 +1627,35 @@ a.player-title:hover {
   font-variant-numeric: tabular-nums;
 }
 
-.comment-children {
+.comment-children,
+.comment-extra {
   margin: 8px 0 0;
   padding: 0;
   list-style: none;
+  min-width: 0;
 }
 
-.comment-children .comment-item {
+.comment-children > .comment-item,
+.comment-extra > .comment-item {
   grid-template-columns: 28px minmax(0, 1fr);
-  margin-left: 4px;
+  margin-left: 0;
   padding: 8px 0 8px 10px;
   border-left: 2px solid rgba(236, 65, 65, 0.35);
+}
+
+.comment-expand {
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--primary);
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.comment-expand:hover {
+  color: var(--text);
 }
 
 .comment-children .comment-item > img,
@@ -1640,10 +1669,10 @@ a.player-title:hover {
   flex: none;
   align-self: center;
   margin-top: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
   background: transparent;
-  color: #fff;
+  color: var(--text);
   padding: 6px 16px;
   font-size: 13px;
 }
@@ -1678,13 +1707,28 @@ a.player-title:hover {
   letter-spacing: 0.03em;
   white-space: nowrap;
   color: transparent;
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.28));
-  animation-name: danmaku-fly;
-  animation-timing-function: linear;
-  animation-fill-mode: forwards;
+  animation-name: danmaku-fly, danmaku-shimmer;
+  animation-duration: var(--fly, 18s), 3.6s;
+  animation-timing-function: linear, linear;
+  animation-iteration-count: 1, infinite;
+  animation-fill-mode: forwards, none;
+}
+
+.danmaku-item.tone-0 {
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(186, 230, 253, 0.15) 16%, rgba(125, 211, 252, 0.78) 42%, rgba(255, 255, 255, 0.35) 68%, rgba(255, 255, 255, 0) 100%);
+}
+
+.danmaku-item.tone-1 {
+  background-image: linear-gradient(90deg, rgba(255, 236, 214, 0) 0%, rgba(255, 214, 170, 0.2) 18%, rgba(255, 255, 255, 0.62) 46%, rgba(255, 183, 178, 0.55) 74%, rgba(255, 236, 214, 0) 100%);
+}
+
+.danmaku-item.tone-2 {
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.2) 20%, rgba(196, 181, 253, 0.7) 48%, rgba(255, 255, 255, 0.28) 76%, rgba(255, 255, 255, 0) 100%);
 }
 
 .danmaku-layer.is-paused .danmaku-item {
@@ -1696,15 +1740,24 @@ a.player-title:hover {
     transform: translateX(0);
     opacity: 0;
   }
-  16% {
-    opacity: 0.72;
+  12% {
+    opacity: 0.82;
   }
-  72% {
-    opacity: 0.62;
+  78% {
+    opacity: 0.55;
   }
   100% {
     transform: translateX(calc(-100cqi - 100%));
     opacity: 0;
+  }
+}
+
+@keyframes danmaku-shimmer {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 100% 50%;
   }
 }
 
@@ -1808,7 +1861,7 @@ a.player-title:hover {
   }
 
   .lyric-danmaku {
-    width: min(220px, 64vw);
+    height: 88px;
   }
 
   .poster-window {

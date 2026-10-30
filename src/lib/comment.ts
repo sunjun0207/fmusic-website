@@ -32,6 +32,7 @@ type RawPage = {
   rows?: RawRow[]
   total?: string | number
   result?: string
+  data?: { info?: RawRow[]; rows?: RawRow[]; total?: string | number }
 }
 
 function commentText(value: unknown) {
@@ -156,6 +157,14 @@ export function formatCommentCount(value: number) {
   return `${text}万`
 }
 
+function pageOf(data: RawPage) {
+  const nested = data.data && typeof data.data === 'object' ? data.data : null
+  const rows = Array.isArray(data.rows) ? data.rows : Array.isArray(nested?.info) ? nested.info : Array.isArray(nested?.rows) ? nested.rows : []
+  const rawTotal = data.total ?? nested?.total
+  const total = rawTotal === undefined || rawTotal === null || rawTotal === '' ? rows.length : Number(rawTotal)
+  return { rows, total: Number.isFinite(total) ? total : rows.length }
+}
+
 async function readRows(url: string) {
   const res = await fetch(url)
   if (!res.ok) throw new Error('评论加载失败')
@@ -163,7 +172,7 @@ async function readRows(url: string) {
   if (!text.startsWith('{')) throw new Error('评论加载失败')
   const data = JSON.parse(text) as RawPage
   if (data.result && data.result !== 'ok') throw new Error('评论加载失败')
-  return { rows: data.rows ?? [], total: Number(data.total) || (data.rows ?? []).length }
+  return pageOf(data)
 }
 
 /** digest：15 是单曲，8 是歌单。 */
