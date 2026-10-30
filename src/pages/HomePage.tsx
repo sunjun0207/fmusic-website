@@ -305,7 +305,7 @@ function BrandBand() {
     <section className="brand-band">
       <WaveArt className="brand-band-wave" />
       <div className="wrap brand-band-inner">
-        <p className="eyebrow">ABOUT SOUNDWAVE</p>
+        <p className="eyebrow">ABOUT JUN.SUN</p>
         <h2>{BRAND_STORY.title}</h2>
         {BRAND_STORY.lines.map((line) => (
           <p key={line}>{line}</p>
@@ -316,7 +316,7 @@ function BrandBand() {
             去社区遇见同频的人
           </a>
           <a className="btn btn-ghost" href="#/about">
-            了解音浪
+            了解聆听
           </a>
         </div>
       </div>

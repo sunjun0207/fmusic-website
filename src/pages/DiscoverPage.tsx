@@ -16,14 +16,14 @@ import { coverUrl } from '../lib/search'
 import { useRemote } from '../lib/useRemote'
 
 const MOOD_TONES: [string, string][] = [
-  ['#6366F1', '#B34DFF'],
-  ['#38BDF8', '#2DD4BF'],
-  ['#F59E0B', '#F04D9A'],
-  ['#F04D9A', '#B34DFF'],
-  ['#8B5CF6', '#38BDF8'],
-  ['#F97316', '#F04D9A'],
-  ['#22D3EE', '#6366F1'],
-  ['#B34DFF', '#F04D9A'],
+  ['#FF8787', '#E03131'],
+  ['#4DABF7', '#1C7ED6'],
+  ['#FFA94D', '#E8590C'],
+  ['#38D9A9', '#0CA678'],
+  ['#B197FC', '#7048E8'],
+  ['#FAA2C1', '#E64980'],
+  ['#3BC9DB', '#1098AD'],
+  ['#748FFC', '#4263EB'],
 ]
 
 function Moods() {
@@ -38,7 +38,7 @@ function Moods() {
         {() => (
           <div className="mood-grid">
             {moods.map((tag, index) => (
-              <article key={tag.id} className="mood-card" style={toneStyle(MOOD_TONES[index % MOOD_TONES.length] ?? ['#8B5CF6', '#F04D9A'])}>
+              <article key={tag.id} className="mood-card" style={toneStyle(MOOD_TONES[index % MOOD_TONES.length] ?? ['#FF8787', '#E03131'])}>
                 <a href={hashWith('/playlists', { tag: tag.id })}>
                   <strong>{tag.name}</strong>
                   <span>相关歌单</span>

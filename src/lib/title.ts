@@ -19,7 +19,7 @@ const NAMES: Record<RouteName, string> = {
   vip: '会员中心',
   mine: '我的音乐',
   download: '听歌说明',
-  about: '关于音浪',
+  about: '关于聆听',
   search: '搜索',
   notfound: '页面走丢了',
 }

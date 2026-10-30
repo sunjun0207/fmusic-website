@@ -1,7 +1,7 @@
 import { LogoMark } from '../components/Logo'
 import { WaveArt } from '../components/PageHero'
 import { BRAND_STORY, KEYWORDS, SLOGANS } from '../data/brand'
-import { APP_VERSION, CONTACT_EMAIL, MOTTO, PRODUCT, SITE_VERSION, SLOGAN } from '../lib/site'
+import { APP_VERSION, BRAND, BRAND_CN, CONTACT_EMAIL, MOTTO, PRODUCT, SITE_VERSION, SLOGAN } from '../lib/site'
 
 const PILLARS = [
   { title: '音乐发现', text: '热门新歌、宝藏歌曲、小众音乐，每一次打开都有新的惊喜。' },
@@ -18,7 +18,7 @@ export function AboutPage() {
         <LogoMark size={64} />
         <p className="eyebrow">{MOTTO}</p>
         <h1>
-          音浪 <span className="gradient-text">SOUNDWAVE</span>
+          {BRAND_CN} <span className="gradient-text">{BRAND}</span>
         </h1>
         <p className="about-slogan">{SLOGAN}</p>
         <p>听见热爱 · 遇见共鸣。一个发现好音乐、分享好心情、遇见同频灵魂的音乐世界。</p>

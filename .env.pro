@@ -3,7 +3,7 @@
 # Docker: npm run docker:pro:build && npm run docker:pro:up
 
 VITE_APP_ENV=pro
-VITE_APP_TITLE=音浪 SOUNDWAVE
+VITE_APP_TITLE=聆听 jun.sun
 VITE_BASE=/
 VITE_SOURCEMAP=false
 VITE_DEV_PORT=5174

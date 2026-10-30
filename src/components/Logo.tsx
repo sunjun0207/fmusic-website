@@ -1,35 +1,30 @@
 import { useId } from 'react'
+import { BRAND, BRAND_CN, PRODUCT } from '../lib/site'
 
 export function LogoMark({ size = 36 }: { size?: number }) {
   const id = useId()
   return (
-    <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 36 36" aria-hidden="true">
       <defs>
         <linearGradient id={`${id}-g`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#8B5CF6" />
-          <stop offset="0.5" stopColor="#B34DFF" />
-          <stop offset="1" stopColor="#F04D9A" />
+          <stop offset="0" stopColor="#FF6B6B" />
+          <stop offset="1" stopColor="#E03131" />
         </linearGradient>
       </defs>
-      <rect width="40" height="40" rx="12" fill={`url(#${id}-g)`} />
-      <g stroke="#fff" strokeWidth="3" strokeLinecap="round">
-        <path d="M10 18v4" />
-        <path d="M15 14v12" />
-        <path d="M20 10v20" />
-        <path d="M25 15v10" />
-        <path d="M30 18v4" />
-      </g>
+      <circle cx="18" cy="18" r="17" fill={`url(#${id}-g)`} />
+      <circle cx="18" cy="18" r="8" fill="none" stroke="#fff" strokeWidth="1.8" />
+      <circle cx="18" cy="18" r="2.6" fill="#fff" />
     </svg>
   )
 }
 
 export function Logo() {
   return (
-    <a className="logo" href="#/home" aria-label="音浪 SOUNDWAVE 首页">
+    <a className="logo" href="#/home" aria-label={`${PRODUCT} 首页`}>
       <LogoMark />
       <span className="logo-text">
-        <b>音浪</b>
-        <small>SOUNDWAVE</small>
+        <small>{BRAND_CN}</small>
+        <b>{BRAND}</b>
       </span>
     </a>
   )

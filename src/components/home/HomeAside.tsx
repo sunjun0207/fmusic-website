@@ -28,7 +28,7 @@ function ProfileCard() {
           <Icon name="headphones" size={22} />
         </span>
         <div>
-          <strong>{nickname || '音浪新朋友'}</strong>
+          <strong>{nickname || '聆听新朋友'}</strong>
           <span className="level-badge">
             Lv.{level.level} {level.title}
           </span>
@@ -47,7 +47,7 @@ function ProfileCard() {
       </a>
       {nickname ? null : (
         <a className="profile-tip" href="#/vip">
-          给自己起个昵称，让音浪记住你
+          给自己起个昵称，让聆听记住你
           <Icon name="chevronRight" size={14} />
         </a>
       )}
@@ -121,7 +121,7 @@ function VipPromo() {
     <a className="aside-card vip-promo" href="#/vip">
       <span className="vip-promo-badge">
         <Icon name="crown" size={14} />
-        SOUNDWAVE CLUB
+        JUN.SUN CLUB
       </span>
       <strong>不止听见旋律，更要感受热爱。</strong>
       <span>无损音质 · 超清 MV · 歌词弹幕</span>

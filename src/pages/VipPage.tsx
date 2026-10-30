@@ -11,9 +11,9 @@ import { toast } from '../lib/toast'
 import { useLibraryVersion } from '../lib/useLibrary'
 
 const FAQ = [
-  { q: '会员需要付费吗？', a: '不需要。音浪目前处于公测期，无损音质、超清 MV、下载、歌词弹幕等全部功能向每一位乐迷免费开放，也不需要注册登录。' },
+  { q: '会员需要付费吗？', a: '不需要。聆听目前处于公测期，无损音质、超清 MV、下载、歌词弹幕等全部功能向每一位乐迷免费开放，也不需要注册登录。' },
   { q: '我的收藏和歌单存在哪里？', a: '保存在你当前使用的浏览器里。换一台设备、换浏览器或清除网站数据后，这些记录不会跟着走，重要的歌单记得及时记下来。' },
-  { q: '听歌等级怎么算？', a: '每开始播放一首歌记一次，累计越多等级越高，从 Lv.1「音浪新人」一路升到 Lv.10「传奇乐迷」。等级只记录在本机。' },
+  { q: '听歌等级怎么算？', a: '每开始播放一首歌记一次，累计越多等级越高，从 Lv.1「聆听新人」一路升到 Lv.10「传奇乐迷」。等级只记录在本机。' },
   { q: '为什么有的歌放不了？', a: '少数歌曲因为版权或线路原因暂时无法播放，会提示「音乐暂时走神了，请稍后再试」。换一首，或者过一会儿再来听。' },
 ]
 
@@ -36,7 +36,7 @@ export function VipPage() {
     event.preventDefault()
     saveNickname(draft.trim())
     setEditing(false)
-    toast(draft.trim() ? `你好，${draft.trim()}，欢迎来到音浪` : '已恢复默认昵称')
+    toast(draft.trim() ? `你好，${draft.trim()}，欢迎来到聆听` : '已恢复默认昵称')
   }
 
   return (
@@ -46,7 +46,7 @@ export function VipPage() {
         <section className="vip-card" aria-label="会员卡">
           <div className="vip-card-top">
             <LogoMark size={30} />
-            <span>SOUNDWAVE CLUB</span>
+            <span>JUN.SUN CLUB</span>
             <em>公测会员</em>
           </div>
           {editing ? (
@@ -61,7 +61,7 @@ export function VipPage() {
             </form>
           ) : (
             <div className="vip-card-name">
-              <strong>{nickname || '音浪新朋友'}</strong>
+              <strong>{nickname || '聆听新朋友'}</strong>
               <button
                 type="button"
                 className="text-btn"

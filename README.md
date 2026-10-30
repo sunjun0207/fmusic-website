@@ -1,6 +1,6 @@
-# 音浪 SOUNDWAVE（fmusic-website）
+# 聆听 jun.sun（fmusic-website）
 
-音浪 SOUNDWAVE 是一个面向年轻人的潮流音乐社区，这里是它的电脑端网站，排版参考网易云音乐网页版。首页依次是品牌导航和搜索、主视觉 Banner、每日推荐、热门歌单、新歌首发、排行榜、音乐电台和音乐社区，底部固定播放器。深色界面，品牌渐变 `#8B5CF6 → #B34DFF → #F04D9A`。
+聆听 jun.sun 是一个面向年轻人的潮流音乐社区，这里是它的电脑端网站，排版参考网易云音乐网页版。首页依次是品牌导航和搜索、主视觉 Banner、每日推荐、热门歌单、新歌首发、排行榜、音乐电台和音乐社区，底部固定播放器。浅色界面，主色 `#EC4141`；歌词页、MV 和封面大图保持深色。
 
 开发时由 Vite 把 `/api-fmusic-pomelo7-server/*` 转发到酷我。数据来源：
 
@@ -49,9 +49,9 @@ npm run preview
 | `#/mine` | 我的音乐：收藏，`?tab=lists` 是自建歌单，`?tab=recent` 是最近播放 |
 | `#/search?q=周杰伦` | 搜索曲库，可加 `&page=2` |
 | `#/download` | 听歌说明 |
-| `#/about` | 关于音浪 |
+| `#/about` | 关于聆听 |
 
-路由使用 hash，静态托管时不需要服务端重写。播放和下载还依赖 `/api-fmusic-pomelo7-server/kw-nmobi`、`/api-fmusic-pomelo7-server/kw-audio`，推荐内容依赖 `/api-fmusic-pomelo7-server/kw-wapi`。Docker 部署会按环境文件把这些路径反代出去。
+路由使用 hash，静态托管时不需要服务端重写。播放和下载还依赖 `/api-fmusic-pomelo7-server/kw-nmobi`、`/api-fmusic-pomelo7-server/kw-audio`，推荐内容依赖 `/api-fmusic-pomelo7-server/kw-wapi`。Docker 部署会按环境文件把这些路径反代出去，自己写 nginx 见下方「自建 nginx」。
 
 ## 环境
 
@@ -75,6 +75,30 @@ npm run preview
 | `VITE_KW_COMMENT_TARGET` | 歌曲评论，默认 `https://ncomment.kuwo.cn` |
 | `VITE_KW_WAPI_TARGET` | 榜单、歌单、歌手、专辑、Banner 和热搜，默认 `http://wapi.kuwo.cn` |
 | `VITE_DEV_PORT` | 开发端口，默认 `5174` |
+
+## 自建 nginx
+
+不用 Docker、直接用 nginx 托管 `dist` 时，下面的路径都要反代，HTTP 和 HTTPS 两个 server 里各配一份，完整写法见 `docker/nginx/templates-available/app-locations.conf.template`。漏掉的路径会落到 `location /` 返回 `index.html`，页面上表现为「网络开了个小差」；比如少了 `kw-wapi`，首页、排行榜、歌单和歌手都加载不出来。
+
+| 路径（前缀 `/api-fmusic-pomelo7-server/`） | 上游 | 备注 |
+|------|------|------|
+| `kw-wapi/` | `http://wapi.kuwo.cn/` | 榜单、歌单、歌手、专辑、Banner、热搜 |
+| `kw-search/` | `http://search.kuwo.cn/` | |
+| `kw-openapi/` | `https://kuwo.cn/` | |
+| `kw-nmobi/` | `http://nmobi.kuwo.cn/` | 带 `User-Agent: okhttp/3.10.0` |
+| `kw-img/` | `https://img1.kuwo.cn/` | |
+| `kw-comment/` | `https://ncomment.kuwo.cn/` | 带 `Referer: https://www.kuwo.cn/` 和 `User-Agent: Mozilla/5.0` |
+| `kw-cdn/` | `http://kw-er.kuwo.cn/` | `proxy_buffering off` |
+| `kw-audio/<域名>/` | 路径里的 `*.kuwo.cn` | 正则 location，需要 `resolver`；歌曲在 `kw-*.kuwo.cn`，封面在 `img*.kuwo.cn`，两种都要放行 |
+
+`Host` 设成上游域名，上游是 https 时加 `proxy_ssl_server_name on;`。以 `kw-wapi` 为例：
+
+```nginx
+location /api-fmusic-pomelo7-server/kw-wapi/ {
+    proxy_pass http://wapi.kuwo.cn/;
+    proxy_set_header Host wapi.kuwo.cn;
+}
+```
 
 ## 技术栈
 

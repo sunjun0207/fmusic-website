@@ -14,7 +14,7 @@ const COLUMNS = [
     ],
   },
   {
-    title: '音浪社区',
+    title: '聆听社区',
     links: [
       ['音乐电台', '#/radio'],
       ['音乐社区', '#/community'],
@@ -23,7 +23,7 @@ const COLUMNS = [
     ],
   },
   {
-    title: '关于音浪',
+    title: '关于聆听',
     links: [
       ['品牌故事', '#/about'],
       ['听歌说明', '#/download'],
