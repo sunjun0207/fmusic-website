@@ -21,7 +21,7 @@ export const PAGE_COPY = {
   playlists: { en: 'PLAYLISTS', title: '宝藏歌单', desc: '总有一些好音乐，值得被更多人听见。' },
   albums: { en: 'NEW RELEASES', title: '每日新歌', desc: '新鲜音乐准时上架，让耳朵保持新鲜感。' },
   artists: { en: 'ARTISTS', title: '从一个声音，走进一个人的音乐世界。', desc: '华语、日韩、欧美，热门歌手一网打尽。' },
-  vip: { en: 'JUN.SUN CLUB', title: '不止听见旋律，更要感受热爱。', desc: '无损音质、超清 MV、歌词弹幕……公测期间全部免费开放。' },
+  vip: { en: '碎冰音乐', title: '不止听见旋律，更要感受热爱。', desc: '无损音质、超清 MV、歌词弹幕……公测期间全部免费开放。' },
   mine: { en: 'MY UNIVERSE', title: '我的音乐宇宙', desc: '收进来的每一首歌，都是你宇宙里的一颗星。' },
 } satisfies Record<string, Copy>
 
@@ -41,9 +41,9 @@ export const BRAND_STORY = {
   title: '音乐，是生活的另一种表达。',
   lines: [
     '有人用音乐记录青春，有人用旋律治愈孤独，也有人在节奏中寻找自由。',
-    '聆听希望成为你的音乐灵感空间，让每一份热爱都有回响，让每一次相遇都有声音。',
+    '碎冰音乐希望成为你的音乐灵感空间，让每一份热爱都有回响，让每一次相遇都有声音。',
   ],
-  sign: 'jun.sun · 让热爱持续发声。',
+  sign: '碎冰音乐 · 让热爱持续发声。',
 }
 
 export const SLOGANS = ['总有一首歌，懂你的此刻。', '让好音乐，找到懂它的人。', '戴上耳机，世界都是你的。', '每一种心情，都值得被听见。']

@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { BRAND, BRAND_CN, PRODUCT } from '../lib/site'
+import { BRAND, PRODUCT } from '../lib/site'
 
 export function LogoMark({ size = 36 }: { size?: number }) {
   const id = useId()
@@ -23,7 +23,6 @@ export function Logo() {
     <a className="logo" href="#/home" aria-label={`${PRODUCT} 首页`}>
       <LogoMark />
       <span className="logo-text">
-        <small>{BRAND_CN}</small>
         <b>{BRAND}</b>
       </span>
     </a>

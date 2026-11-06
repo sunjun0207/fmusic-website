@@ -3,7 +3,7 @@ import { favoriteArtists, getDailyMix, peekDailyMix } from '../../lib/daily'
 import { weekday } from '../../lib/format'
 import { fetchBanners, fetchChartSongs, type BannerItem } from '../../lib/kuwo'
 import { coverUrl, withCoverSize } from '../../lib/search'
-import { BRAND, BRAND_CN, MOTTO } from '../../lib/site'
+import { BRAND, MOTTO } from '../../lib/site'
 import { useRemote } from '../../lib/useRemote'
 import { Cover } from '../Cover'
 import { Icon } from '../Icon'
@@ -22,9 +22,7 @@ function BrandSlide() {
   return (
     <div className="brand-slide">
       <div className="brand-copy">
-        <p className="eyebrow">
-          {BRAND_CN} · {BRAND}
-        </p>
+        <p className="eyebrow">{BRAND}</p>
         <h1>
           让音乐，
           <br />

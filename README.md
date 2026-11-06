@@ -1,6 +1,6 @@
-# 聆听 jun.sun（fmusic-website）
+# 碎冰音乐（fmusic-website）
 
-聆听 jun.sun 是一个面向年轻人的潮流音乐社区，这里是它的电脑端网站，排版参考网易云音乐网页版。首页依次是品牌导航和搜索、主视觉 Banner、每日推荐、热门歌单、新歌首发、排行榜、音乐电台和音乐社区，底部固定播放器。浅色界面，主色 `#EC4141`；歌词页、MV 和封面大图保持深色。
+碎冰音乐 是一个面向年轻人的潮流音乐社区，这里是它的电脑端网站，排版参考网易云音乐网页版。首页依次是品牌导航和搜索、主视觉 Banner、每日推荐、热门歌单、新歌首发、排行榜、音乐电台和音乐社区，底部固定播放器。浅色界面，主色 `#EC4141`；歌词页、MV 和封面大图保持深色。
 
 开发时由 Vite 把 `/api-fmusic-pomelo7-server/*` 转发到酷我。数据来源：
 
@@ -49,7 +49,7 @@ npm run preview
 | `#/mine` | 我的音乐：收藏，`?tab=lists` 是自建歌单，`?tab=recent` 是最近播放 |
 | `#/search?q=周杰伦` | 搜索曲库，可加 `&page=2` |
 | `#/download` | 听歌说明 |
-| `#/about` | 关于聆听 |
+| `#/about` | 关于碎冰音乐 |
 
 路由使用 hash，静态托管时不需要服务端重写。播放和下载还依赖 `/api-fmusic-pomelo7-server/kw-nmobi`、`/api-fmusic-pomelo7-server/kw-audio`，推荐内容依赖 `/api-fmusic-pomelo7-server/kw-wapi`。Docker 部署会按环境文件把这些路径反代出去，自己写 nginx 见下方「自建 nginx」。
 
