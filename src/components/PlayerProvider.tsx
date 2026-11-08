@@ -36,7 +36,7 @@ import {
 import { getLyric, prefetchLyric, type LyricLine } from '../lib/lyric'
 import { nextPlayMode, PLAY_MODE_LABEL, resolveAdvance, type AdvanceDirection, type PlayMode } from '../lib/playback'
 import { mediaFilename, pictureFilename, saveMedia, savePicture } from '../lib/saveMedia'
-import { getMediaUrl, getPlayableMvQualities, listedMvQualities, playedAudioProfile, prefetchMedia, sameMediaFile } from '../lib/play'
+import { getMediaUrl, getPlayableMvQualities, invalidateMediaUrl, listedMvQualities, playedAudioProfile, prefetchMedia, sameMediaFile } from '../lib/play'
 import { coverUrl, findPlayable, isSongWithoutMv, POSTER_SIZE, rememberNoMv, songPosters, subscribeNoMv, withCoverSize, type MusicItem } from '../lib/search'
 import { shareSong } from '../lib/share'
 import { toast } from '../lib/toast'
@@ -389,6 +389,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const stackRef = useRef<HTMLDivElement>(null)
   const scrubbingRef = useRef(false)
   const requestRef = useRef(0)
+  const audioRetryRef = useRef(0)
+  const audioRecoveringRef = useRef(false)
   const queueRef = useRef<MusicItem[]>([])
   const modeRef = useRef<PlayMode>(playMode)
   const historyRef = useRef<string[]>([])
@@ -719,6 +721,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     el.muted = false
     el.volume = songVolumeRef.current / 100
     if (el.getAttribute('src') !== audio.url) el.src = audio.url
+    else if (el.error) el.load()
     let cancel = false
     void el.play().then(() => {
       if (cancel || silenceAudioRef.current) {
@@ -837,9 +840,32 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setSongHeld(false)
   }
 
+  const recoverAudio = (song: MusicItem) => {
+    const quality = audioQualityRef.current
+    invalidateMediaUrl(song.id, 'audio', quality)
+    const ticket = ++requestRef.current
+    setError('')
+    setPending(true)
+    getMediaUrl(song.id, 'audio', quality)
+      .then((url) => {
+        if (ticket !== requestRef.current) return
+        invalidateMediaUrl(song.id, 'audio', quality)
+        audioTimeRef.current = 0
+        setAudio({ song, url })
+      })
+      .catch(() => {
+        if (ticket !== requestRef.current) return
+        setError(PLAY_TIP)
+      })
+      .finally(() => {
+        audioRecoveringRef.current = false
+        if (ticket === requestRef.current) setPending(false)
+      })
+  }
+
   const open = async (song: MusicItem, kind: Kind, request?: number) => {
     const ticket = request ?? ++requestRef.current
-    if (kind === 'audio' && audio?.song.id === song.id && audio.url) {
+    if (kind === 'audio' && audio?.song.id === song.id && audio.url && !audioRef.current?.error) {
       const el = audioRef.current
       releaseSong()
       videoRef.current?.pause()
@@ -881,6 +907,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setLyricOpen(showLyricRef.current)
       setMv(null)
       setStage(null)
+      audioRetryRef.current = 0
+      audioRecoveringRef.current = false
       if (song.id) {
         addRecentPlay(song)
         setLibraryVersion((value) => value + 1)
@@ -888,7 +916,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     }
     try {
-      const url = await getMediaUrl(song.id, kind, kind === 'mv' ? mvQualityRef.current : audioQualityRef.current, song.mvId ?? '')
+      const quality = kind === 'mv' ? mvQualityRef.current : audioQualityRef.current
+      const url = await getMediaUrl(song.id, kind, quality, song.mvId ?? '')
+      if (kind === 'audio') invalidateMediaUrl(song.id, 'audio', quality)
       if (ticket !== requestRef.current) return
       if (kind === 'audio') {
         audioTimeRef.current = 0
@@ -1108,7 +1138,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setError('')
     getMediaUrl(song.id, 'audio', quality)
       .then((url) => {
+        invalidateMediaUrl(song.id, 'audio', quality)
         if (ticket !== requestRef.current) return
+        audioRetryRef.current = 0
         setAudio({ song, url })
         const profile = playedAudioProfile(song.id, quality)
         if (profile.quality !== quality) {
@@ -1299,8 +1331,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           onError={(event) => {
             const el = event.currentTarget
             const code = el.error?.code ?? 0
-            if (silenceAudioRef.current || !el.getAttribute('src') || code < 2) return
-            setError(PLAY_TIP)
+            if (silenceAudioRef.current || !el.getAttribute('src') || code < 2 || el.ended) return
+            const song = audioSongRef.current
+            if (!song?.id || audioRecoveringRef.current) return
+            if (audioRetryRef.current >= 1) {
+              setError(PLAY_TIP)
+              return
+            }
+            audioRetryRef.current += 1
+            audioRecoveringRef.current = true
+            recoverAudio(song)
           }}
         />
       ) : null}

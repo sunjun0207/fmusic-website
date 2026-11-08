@@ -91,7 +91,20 @@ export function toProxyMediaUrl(url: string): string {
   }
 }
 
-const mediaCache = new Map<string, Promise<string>>()
+/** 签名地址发出去之后很快就不能再播：过期，或浏览器再次发 Range，CDN 会重置连接。只留给悬停预取用。 */
+const AUDIO_URL_TTL_MS = 2 * 60 * 1000
+
+type MediaCacheEntry = { promise: Promise<string>; at: number }
+
+const mediaCache = new Map<string, MediaCacheEntry>()
+
+function mediaCacheKey(rid: string, kind: 'audio' | 'mv', quality: MvQuality, mvId = '') {
+  return kind === 'mv' ? `${kind}:${rid}:${mvId}:${quality}` : `${kind}:${rid}:${quality}`
+}
+
+export function invalidateMediaUrl(rid: string, kind: 'audio' | 'mv', quality: MvQuality = 'fhd', mvId = '') {
+  mediaCache.delete(mediaCacheKey(rid, kind, quality, mvId))
+}
 
 export function sameMediaFile(left: string, right: string) {
   return mediaFileKey(left) === mediaFileKey(right)
@@ -160,14 +173,15 @@ async function resolvePlayableMvQualities(rid: string, mvId: string, formats?: s
 }
 
 export function getMediaUrl(rid: string, kind: 'audio' | 'mv', quality: MvQuality = 'fhd', mvId = ''): Promise<string> {
-  const key = kind === 'mv' ? `${kind}:${rid}:${mvId}:${quality}` : `${kind}:${rid}:${quality}`
+  const key = mediaCacheKey(rid, kind, quality, mvId)
   const cached = mediaCache.get(key)
-  if (cached) return cached
+  if (cached && (kind !== 'audio' || Date.now() - cached.at < AUDIO_URL_TTL_MS)) return cached.promise
   const job = fetchMediaUrl(rid, kind, quality, mvId).catch((error: unknown) => {
-    mediaCache.delete(key)
+    const current = mediaCache.get(key)
+    if (current?.promise === job) mediaCache.delete(key)
     throw error
   })
-  mediaCache.set(key, job)
+  mediaCache.set(key, { promise: job, at: Date.now() })
   return job
 }
 
@@ -177,7 +191,7 @@ export function prefetchMedia(rid: string, kind: 'audio' | 'mv', quality: MvQual
 
 async function fetchAudioUrl(rid: string, quality: MvQuality) {
   const spec = AUDIO_QUALITY[quality]
-  const res = await fetch(buildNmobiPath(rid, spec.format, spec.br))
+  const res = await fetch(buildNmobiPath(rid, spec.format, spec.br), { cache: 'no-store' })
   if (!res.ok) throw new Error('播放地址获取失败')
   const map = parseBody(await res.text())
   if (!map.url) throw new Error('未获取到播放地址')
